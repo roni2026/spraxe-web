@@ -138,9 +138,11 @@ export function EmailAuthDialog({ open, onOpenChange }: EmailAuthDialogProps) {
   };
 
   // 2. New: Verifies the code and inserts the profile
-  const handleVerify = async () => {
-    if (!code || code.length < 6) {
-      toast({ title: 'Invalid Code', description: 'Please enter the 6-digit code', variant: 'destructive' });
+ const handleVerify = async () => {
+    // CHANGE: Update logic to check for 8 digits
+    if (!code || code.length < 8) {
+      // CHANGE: Update the error text
+      toast({ title: 'Invalid Code', description: 'Please enter the verification code sent to your e-mail.', variant: 'destructive' });
       return;
     }
 
