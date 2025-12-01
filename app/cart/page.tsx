@@ -107,13 +107,14 @@ export default function CartPage() {
 
       if (orderError) throw orderError;
 
-      // Create Order Items
-      const orderItems = items.map(item => ({
+       // 3. Create Order Items
+        const orderItems = items.map(item => ({
         order_id: order.id,
         product_id: item.product_id,
         quantity: item.quantity,
-        unit_price: item.product.price || item.product.base_price || 0,
-        total_price: (item.product.price || item.product.base_price || 0) * item.quantity
+        // ✅ FIX: Removed "|| item.product.base_price" to satisfy TypeScript
+        unit_price: item.product.price || 0, 
+        total_price: (item.product.price || 0) * item.quantity
       }));
 
       const { error: itemsError } = await supabase.from('order_items').insert(orderItems);
