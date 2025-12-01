@@ -9,7 +9,7 @@ import { useCart } from '@/lib/cart/cart-context';
 import { Header } from '@/components/layout/header';
 import { Footer } from '@/components/layout/footer';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -18,32 +18,33 @@ import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { Trash2, Phone, MapPin, Truck, Home, Pencil, CheckCircle2 } from 'lucide-react';
 
-// Shipping Constants
 const SHIPPING_INSIDE_DHAKA = 60;
 const SHIPPING_OUTSIDE_DHAKA = 120;
 
 export default function CartPage() {
-  // 1. Get Loading State to fix refresh bug
   const { user, profile, refreshProfile, loading: authLoading } = useAuth();
   const { items, removeItem, updateQuantity, subtotal, clearCart, loading: cartLoading } = useCart();
   const router = useRouter();
   const { toast } = useToast();
 
-  // State
   const [deliveryLocation, setDeliveryLocation] = useState<'inside' | 'outside'>('inside');
-  
-  // Local state for inputs (only used if profile data is missing)
   const [manualAddress, setManualAddress] = useState('');
   const [manualPhone, setManualPhone] = useState('');
-  
   const [isSavingPhone, setIsSavingPhone] = useState(false);
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
 
-  // Calculate Totals
+  // Sync state with profile
+  useEffect(() => {
+    if (profile) {
+      if (profile.phone) setManualPhone(profile.phone);
+      // @ts-ignore
+      if (profile.address) setManualAddress(profile.address);
+    }
+  }, [profile]);
+
   const shippingCost = deliveryLocation === 'inside' ? SHIPPING_INSIDE_DHAKA : SHIPPING_OUTSIDE_DHAKA;
   const total = subtotal + shippingCost;
 
-  // --- SAVE PHONE (For users who don't have one yet) ---
   const handleSavePhone = async () => {
     if (!user) return;
     if (manualPhone.length < 11) {
@@ -61,16 +62,13 @@ export default function CartPage() {
     setIsSavingPhone(false);
   };
 
-  // --- PLACE ORDER ---
   const handleConfirmOrder = async () => {
     if (!user) return router.push('/login');
     
-    // 1. Determine final data (Profile takes priority)
     const finalPhone = profile?.phone || manualPhone;
-    // @ts-ignore (Bypass TS check for now)
+    // @ts-ignore
     const finalAddress = profile?.address || manualAddress;
 
-    // 2. Validation
     if (!finalPhone) {
       toast({ title: "Phone Required", description: "Please add a contact number.", variant: "destructive" });
       return;
@@ -83,7 +81,6 @@ export default function CartPage() {
     setIsPlacingOrder(true);
 
     try {
-      // Create the Order
       const { data: order, error: orderError } = await supabase
         .from('orders')
         .insert({
@@ -102,7 +99,6 @@ export default function CartPage() {
 
       if (orderError) throw orderError;
 
-      // Create Order Items
       const orderItems = items.map(item => ({
         order_id: order.id,
         product_id: item.product_id,
@@ -114,20 +110,17 @@ export default function CartPage() {
       const { error: itemsError } = await supabase.from('order_items').insert(orderItems);
       if (itemsError) throw itemsError;
 
-      // Success
       await clearCart();
       toast({ title: "Order Confirmed!", description: "We will ship your items soon." });
       router.push('/dashboard'); 
 
     } catch (error: any) {
-      console.error(error);
       toast({ title: "Order Failed", description: error.message, variant: "destructive" });
     } finally {
       setIsPlacingOrder(false);
     }
   };
 
-  // 2. LOADING STATE (Fixes the refresh redirect bug)
   if (authLoading || cartLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -136,7 +129,6 @@ export default function CartPage() {
     );
   }
 
-  // Helper to check if we have data
   const hasPhone = !!profile?.phone;
   // @ts-ignore
   const hasAddress = !!profile?.address;
@@ -156,93 +148,12 @@ export default function CartPage() {
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             
-            {/* LEFT SIDE: Info & Items */}
+            {/* --- LEFT SIDE: CART ITEMS ONLY --- */}
             <div className="lg:col-span-2 space-y-6">
-              
-              {/* 1. CONTACT INFO SECTION */}
-              <Card className={hasPhone ? "border-green-200 bg-green-50/50" : "border-red-200 bg-red-50/50"}>
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <Phone className={`h-5 w-5 ${hasPhone ? "text-green-700" : "text-red-600"}`} />
-                      <h3 className="font-bold text-gray-900">Contact Number</h3>
-                    </div>
-                    {hasPhone && (
-                      <Link href="/dashboard">
-                        <Button variant="outline" size="sm" className="h-8 bg-white hover:bg-gray-50">
-                          <Pencil className="w-3 h-3 mr-2" /> Edit in Profile
-                        </Button>
-                      </Link>
-                    )}
-                  </div>
-                  
-                  {hasPhone ? (
-                    // READ ONLY VIEW
-                    <div className="flex items-center gap-2 text-lg font-medium text-green-900 bg-white p-3 rounded border border-green-200 shadow-sm">
-                      <CheckCircle2 className="h-5 w-5 text-green-600" />
-                      {profile.phone}
-                    </div>
-                  ) : (
-                    // INPUT VIEW (If missing)
-                    <div className="flex gap-3">
-                      <Input 
-                        placeholder="01XXXXXXXXX" 
-                        value={manualPhone}
-                        onChange={(e) => setManualPhone(e.target.value)}
-                        className="bg-white max-w-xs"
-                      />
-                      <Button onClick={handleSavePhone} disabled={isSavingPhone}>
-                        {isSavingPhone ? "Saving..." : "Save Number"}
-                      </Button>
-                    </div>
-                  )}
-                  {!hasPhone && <p className="text-red-600 text-xs mt-2">* Required to place order</p>}
-                </CardContent>
-              </Card>
-
-              {/* 2. ADDRESS SECTION */}
-              <Card className={hasAddress ? "border-gray-200" : "border-red-200 bg-red-50/50"}>
-                <CardContent className="p-6">
-                   <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <Home className={`h-5 w-5 ${hasAddress ? "text-gray-700" : "text-red-600"}`} />
-                      <h3 className="font-bold text-gray-900">Delivery Address</h3>
-                    </div>
-                    {hasAddress && (
-                      <Link href="/dashboard">
-                        <Button variant="outline" size="sm" className="h-8 hover:bg-gray-50">
-                          <Pencil className="w-3 h-3 mr-2" /> Edit in Profile
-                        </Button>
-                      </Link>
-                    )}
-                  </div>
-
-                  {hasAddress ? (
-                    // READ ONLY VIEW
-                    <div className="bg-gray-50 p-4 rounded-lg border text-gray-800 whitespace-pre-wrap">
-                      {/* @ts-ignore */}
-                      {profile.address}
-                    </div>
-                  ) : (
-                    // INPUT VIEW (If missing)
-                    <>
-                      <Textarea 
-                        placeholder="House #, Road #, Area, City..." 
-                        value={manualAddress}
-                        onChange={(e) => setManualAddress(e.target.value)}
-                        className="bg-white min-h-[80px]"
-                      />
-                      <p className="text-red-600 text-xs mt-2">* Required. Please add address in your profile for better experience.</p>
-                      <Link href="/dashboard" className="text-blue-600 text-sm hover:underline mt-2 inline-block">
-                        Go to Profile to add address
-                      </Link>
-                    </>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* 3. CART ITEMS */}
               <Card>
+                <CardHeader>
+                  <CardTitle>Cart Items ({items.length})</CardTitle>
+                </CardHeader>
                 <CardContent className="p-6 divide-y">
                   {items.map((item) => (
                     <div key={item.id} className="flex py-4">
@@ -273,12 +184,78 @@ export default function CartPage() {
               </Card>
             </div>
 
-            {/* RIGHT SIDE: Summary */}
+            {/* --- RIGHT SIDE: ORDER SUMMARY (INCLUDES PHONE & ADDRESS) --- */}
             <div className="lg:col-span-1">
               <Card className="sticky top-20 shadow-lg border-blue-100">
                 <CardContent className="p-6 space-y-6">
                   <h2 className="text-lg font-bold text-gray-900">Order Summary</h2>
 
+                  {/* 1. CONTACT INFO */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <Label className="flex items-center gap-2 text-gray-600">
+                        <Phone className="h-4 w-4" /> Contact Number
+                      </Label>
+                      {hasPhone && (
+                        <Link href="/dashboard" className="text-xs text-blue-600 hover:underline">
+                          Edit
+                        </Link>
+                      )}
+                    </div>
+                    {hasPhone ? (
+                      <div className="text-sm font-medium text-gray-900 bg-gray-50 p-2 rounded border">
+                        {profile.phone}
+                      </div>
+                    ) : (
+                      <div className="flex gap-2">
+                        <Input 
+                          placeholder="01XXXXXXXXX" 
+                          value={manualPhone}
+                          onChange={(e) => setManualPhone(e.target.value)}
+                          className="bg-white h-9"
+                        />
+                        <Button size="sm" onClick={handleSavePhone} disabled={isSavingPhone}>
+                          Save
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 2. DELIVERY ADDRESS */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <Label className="flex items-center gap-2 text-gray-600">
+                        <Home className="h-4 w-4" /> Delivery Address
+                      </Label>
+                      {hasAddress && (
+                        <Link href="/dashboard" className="text-xs text-blue-600 hover:underline">
+                          Edit
+                        </Link>
+                      )}
+                    </div>
+                    {hasAddress ? (
+                      <div className="text-sm font-medium text-gray-900 bg-gray-50 p-2 rounded border whitespace-pre-wrap">
+                        {/* @ts-ignore */}
+                        {profile.address}
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <Textarea 
+                          placeholder="House, Road, City..." 
+                          value={manualAddress}
+                          onChange={(e) => setManualAddress(e.target.value)}
+                          className="bg-white min-h-[60px]"
+                        />
+                        <Link href="/dashboard" className="text-xs text-blue-600 hover:underline block text-right">
+                          Add details in Profile
+                        </Link>
+                      </div>
+                    )}
+                  </div>
+
+                  <Separator />
+
+                  {/* 3. SHIPPING AREA */}
                   <div className="space-y-3">
                     <Label className="flex items-center gap-2 text-gray-600">
                       <MapPin className="h-4 w-4" /> Shipping Area
@@ -288,24 +265,25 @@ export default function CartPage() {
                       onValueChange={(val: 'inside' | 'outside') => setDeliveryLocation(val)}
                       className="flex flex-col gap-2"
                     >
-                      <div className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer ${deliveryLocation === 'inside' ? 'border-blue-600 bg-blue-50 ring-1 ring-blue-600' : ''}`}>
+                      <div className={`flex items-center justify-between p-2 px-3 border rounded-lg cursor-pointer text-sm ${deliveryLocation === 'inside' ? 'border-blue-600 bg-blue-50 ring-1 ring-blue-600' : ''}`}>
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="inside" id="inside" />
                           <Label htmlFor="inside" className="cursor-pointer">Inside Dhaka</Label>
                         </div>
-                        <span className="font-bold text-gray-900">৳{SHIPPING_INSIDE_DHAKA}</span>
+                        <span className="font-bold">৳{SHIPPING_INSIDE_DHAKA}</span>
                       </div>
-                      <div className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer ${deliveryLocation === 'outside' ? 'border-blue-600 bg-blue-50 ring-1 ring-blue-600' : ''}`}>
+                      <div className={`flex items-center justify-between p-2 px-3 border rounded-lg cursor-pointer text-sm ${deliveryLocation === 'outside' ? 'border-blue-600 bg-blue-50 ring-1 ring-blue-600' : ''}`}>
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="outside" id="outside" />
                           <Label htmlFor="outside" className="cursor-pointer">Outside Dhaka</Label>
                         </div>
-                        <span className="font-bold text-gray-900">৳{SHIPPING_OUTSIDE_DHAKA}</span>
+                        <span className="font-bold">৳{SHIPPING_OUTSIDE_DHAKA}</span>
                       </div>
                     </RadioGroup>
                   </div>
 
-                  <div className="space-y-2 text-sm">
+                  {/* 4. TOTALS */}
+                  <div className="space-y-2 text-sm pt-2">
                     <div className="flex justify-between">
                       <span className="text-gray-600">Subtotal</span>
                       <span>৳{subtotal}</span>
@@ -316,11 +294,12 @@ export default function CartPage() {
                     </div>
                     <Separator className="my-2" />
                     <div className="flex justify-between text-lg font-bold text-blue-900">
-                      <span>Total to Pay</span>
+                      <span>Total</span>
                       <span>৳{total}</span>
                     </div>
                   </div>
 
+                  {/* 5. CONFIRM BUTTON */}
                   <Button 
                     className="w-full bg-blue-900 hover:bg-blue-800 h-12 text-lg shadow-md" 
                     onClick={handleConfirmOrder}
@@ -328,6 +307,13 @@ export default function CartPage() {
                   >
                     {isPlacingOrder ? 'Processing...' : 'Confirm Order'}
                   </Button>
+                  
+                  <div className="text-center">
+                    <span className="text-xs text-gray-500 flex items-center justify-center gap-1">
+                      <Truck className="h-3 w-3" /> Cash on Delivery Available
+                    </span>
+                  </div>
+
                 </CardContent>
               </Card>
             </div>
