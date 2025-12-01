@@ -16,14 +16,15 @@ import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { Trash2, Phone, MapPin, Truck, AlertCircle, Home, Pencil, CheckCircle2 } from 'lucide-react';
+import { Trash2, Phone, MapPin, Truck, Home, Pencil, CheckCircle2 } from 'lucide-react';
 
 // Shipping Constants
 const SHIPPING_INSIDE_DHAKA = 60;
 const SHIPPING_OUTSIDE_DHAKA = 120;
 
 export default function CartPage() {
-  const { user, profile, refreshProfile } = useAuth();
+  // 1. Get Loading State to fix refresh bug
+  const { user, profile, refreshProfile, loading: authLoading } = useAuth();
   const { items, removeItem, updateQuantity, subtotal, clearCart, loading: cartLoading } = useCart();
   const router = useRouter();
   const { toast } = useToast();
@@ -37,15 +38,6 @@ export default function CartPage() {
   
   const [isSavingPhone, setIsSavingPhone] = useState(false);
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
-
-  // Sync state with profile (Just in case they need to edit initially)
-  useEffect(() => {
-    if (profile) {
-      if (profile.phone) setManualPhone(profile.phone);
-      // @ts-ignore
-      if (profile.address) setManualAddress(profile.address);
-    }
-  }, [profile]);
 
   // Calculate Totals
   const shippingCost = deliveryLocation === 'inside' ? SHIPPING_INSIDE_DHAKA : SHIPPING_OUTSIDE_DHAKA;
@@ -75,7 +67,7 @@ export default function CartPage() {
     
     // 1. Determine final data (Profile takes priority)
     const finalPhone = profile?.phone || manualPhone;
-    // @ts-ignore
+    // @ts-ignore (Bypass TS check for now)
     const finalAddress = profile?.address || manualAddress;
 
     // 2. Validation
@@ -83,7 +75,7 @@ export default function CartPage() {
       toast({ title: "Phone Required", description: "Please add a contact number.", variant: "destructive" });
       return;
     }
-    if (!finalAddress.trim()) {
+    if (!finalAddress || !finalAddress.trim()) {
       toast({ title: "Address Required", description: "Please add a delivery address.", variant: "destructive" });
       return;
     }
@@ -99,7 +91,7 @@ export default function CartPage() {
           total: total,
           status: 'pending',
           payment_status: 'pending',
-          shipping_address: finalAddress, // Use the detected address
+          shipping_address: finalAddress, 
           delivery_location: deliveryLocation,
           shipping_cost: shippingCost,
           payment_method: 'Cash on Delivery',
@@ -128,13 +120,21 @@ export default function CartPage() {
       router.push('/dashboard'); 
 
     } catch (error: any) {
+      console.error(error);
       toast({ title: "Order Failed", description: error.message, variant: "destructive" });
     } finally {
       setIsPlacingOrder(false);
     }
   };
 
-  if (cartLoading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+  // 2. LOADING STATE (Fixes the refresh redirect bug)
+  if (authLoading || cartLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-900"></div>
+      </div>
+    );
+  }
 
   // Helper to check if we have data
   const hasPhone = !!profile?.phone;
@@ -170,7 +170,7 @@ export default function CartPage() {
                     {hasPhone && (
                       <Link href="/dashboard">
                         <Button variant="outline" size="sm" className="h-8 bg-white hover:bg-gray-50">
-                          <Pencil className="w-3 h-3 mr-2" /> Edit
+                          <Pencil className="w-3 h-3 mr-2" /> Edit in Profile
                         </Button>
                       </Link>
                     )}
@@ -211,7 +211,7 @@ export default function CartPage() {
                     {hasAddress && (
                       <Link href="/dashboard">
                         <Button variant="outline" size="sm" className="h-8 hover:bg-gray-50">
-                          <Pencil className="w-3 h-3 mr-2" /> Edit
+                          <Pencil className="w-3 h-3 mr-2" /> Edit in Profile
                         </Button>
                       </Link>
                     )}
@@ -224,7 +224,7 @@ export default function CartPage() {
                       {profile.address}
                     </div>
                   ) : (
-                    // INPUT VIEW (If missing - technically they should go to profile, but we allow temp input)
+                    // INPUT VIEW (If missing)
                     <>
                       <Textarea 
                         placeholder="House #, Road #, Area, City..." 
