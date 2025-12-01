@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/lib/auth/auth-context';
 import { useCart } from '@/lib/cart/cart-context';
 import { Header } from '@/components/layout/header';
@@ -11,250 +12,295 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { ShoppingCart, Trash2, Plus, Minus, Package, Tag } from 'lucide-react';
+import { Trash2, Phone, MapPin, Truck, AlertCircle, CheckCircle2 } from 'lucide-react';
+
+// Shipping Constants
+const SHIPPING_INSIDE_DHAKA = 60;
+const SHIPPING_OUTSIDE_DHAKA = 120;
 
 export default function CartPage() {
-  const { user } = useAuth();
+  const { user, profile, refreshProfile } = useAuth();
+  const { items, removeItem, updateQuantity, subtotal, clearCart, loading: cartLoading } = useCart();
   const router = useRouter();
   const { toast } = useToast();
-  const { items, loading, updateQuantity, removeItem, subtotal } = useCart();
-  const [customerNote, setCustomerNote] = useState('');
-  const [couponCode, setCouponCode] = useState('');
-  const [discount, setDiscount] = useState(0);
-  const [applyingCoupon, setApplyingCoupon] = useState(false);
 
-  const handleRemoveItem = async (itemId: string, productName: string) => {
-    await removeItem(itemId);
-    toast({
-      title: 'Removed from cart',
-      description: `${productName} has been removed from your cart.`,
-    });
+  // State
+  const [deliveryLocation, setDeliveryLocation] = useState<'inside' | 'outside'>('inside');
+  const [manualPhone, setManualPhone] = useState('');
+  const [isSavingPhone, setIsSavingPhone] = useState(false);
+  const [isPlacingOrder, setIsPlacingOrder] = useState(false);
+
+  // Sync manual input with profile phone if it exists
+  useEffect(() => {
+    if (profile?.phone) {
+      setManualPhone(profile.phone);
+    }
+  }, [profile]);
+
+  // Calculate Totals
+  const shippingCost = deliveryLocation === 'inside' ? SHIPPING_INSIDE_DHAKA : SHIPPING_OUTSIDE_DHAKA;
+  const total = subtotal + shippingCost;
+
+  // --- 1. MANUAL PHONE SAVE (No OTP) ---
+  const handleSavePhone = async () => {
+    if (!user) return;
+    
+    // Basic validation
+    if (manualPhone.length < 11) {
+      toast({ title: "Invalid Phone", description: "Phone number must be at least 11 digits.", variant: "destructive" });
+      return;
+    }
+
+    setIsSavingPhone(true);
+    
+    // Directly update the profile table
+    const { error } = await supabase
+      .from('profiles')
+      .update({ phone: manualPhone })
+      .eq('id', user.id);
+
+    if (error) {
+      toast({ title: "Error", description: "Failed to save phone number.", variant: "destructive" });
+    } else {
+      toast({ title: "Success", description: "Phone number saved successfully." });
+      await refreshProfile(); // Refresh context so the "Restrict Order" logic updates
+    }
+    setIsSavingPhone(false);
   };
 
-  const handleApplyCoupon = async () => {
-    if (!couponCode.trim()) return;
+  // --- 2. PLACE ORDER (With Restriction) ---
+  const handleConfirmOrder = async () => {
+    if (!user) return router.push('/login');
+    
+    // RESTRICTION CHECK
+    if (!profile?.phone) {
+      toast({ 
+        title: "Phone Required", 
+        description: "Please save your phone number before confirming the order.", 
+        variant: "destructive" 
+      });
+      return;
+    }
 
-    setApplyingCoupon(true);
+    setIsPlacingOrder(true);
 
     try {
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Create the Order
+      const { data: order, error: orderError } = await supabase
+        .from('orders')
+        .insert({
+          user_id: user.id,
+          total_amount: total,
+          status: 'pending',
+          payment_status: 'pending',
+          shipping_address: deliveryLocation === 'inside' ? 'Inside Dhaka' : 'Outside Dhaka',
+          delivery_location: deliveryLocation,
+          shipping_cost: shippingCost,
+          payment_method: 'Cash on Delivery',
+          contact_number: profile.phone // Save the confirmed phone number
+        })
+        .select()
+        .single();
 
-      if (couponCode.toUpperCase() === 'WELCOME10') {
-        setDiscount(subtotal * 0.1);
-        toast({
-          title: 'Coupon applied',
-          description: 'You saved 10% on your order!',
-        });
-      } else {
-        toast({
-          title: 'Invalid coupon',
-          description: 'The coupon code you entered is not valid.',
-          variant: 'destructive',
-        });
-      }
+      if (orderError) throw orderError;
+
+      // Create Order Items
+      const orderItems = items.map(item => ({
+        order_id: order.id,
+        product_id: item.product_id,
+        quantity: item.quantity,
+        unit_price: item.product.price || item.product.base_price || 0,
+        total_price: (item.product.price || item.product.base_price || 0) * item.quantity
+      }));
+
+      const { error: itemsError } = await supabase.from('order_items').insert(orderItems);
+      if (itemsError) throw itemsError;
+
+      // Success
+      await clearCart();
+      toast({ title: "Order Confirmed!", description: "We will contact you soon." });
+      
+      // Redirect (to dashboard or home)
+      router.push('/dashboard'); 
+
+    } catch (error: any) {
+      toast({ title: "Order Failed", description: error.message, variant: "destructive" });
     } finally {
-      setApplyingCoupon(false);
+      setIsPlacingOrder(false);
     }
   };
 
-  const total = subtotal - discount;
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex flex-col">
-        <Header />
-        <div className="flex-1 flex items-center justify-center">Loading...</div>
-        <Footer />
-      </div>
-    );
-  }
+  if (cartLoading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
       <Header />
 
       <div className="container mx-auto px-4 py-8 flex-1">
-        <h1 className="text-3xl font-bold mb-8">Shopping Cart</h1>
+        <h1 className="text-3xl font-bold mb-8 text-gray-900">Checkout</h1>
 
         {items.length === 0 ? (
-          <Card>
-            <CardContent className="py-12 text-center">
-              <ShoppingCart className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold mb-2">Your cart is empty</h3>
-              <p className="text-gray-600 mb-4">Add products to your cart to continue</p>
-              <Link href="/products">
-                <Button className="bg-blue-900 hover:bg-blue-800">Browse Products</Button>
-              </Link>
-            </CardContent>
-          </Card>
+          <div className="text-center py-12 bg-white rounded-lg shadow-sm">
+            <h2 className="text-xl font-semibold mb-4">Your cart is empty</h2>
+            <Link href="/products"><Button>Start Shopping</Button></Link>
+          </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2 space-y-4">
-              {items.map((item) => (
-                <Card key={item.id}>
-                  <CardContent className="p-6">
-                    <div className="flex items-center space-x-4">
-                      <div className="w-24 h-24 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                        {item.product?.images && item.product.images.length > 0 ? (
-                          <img
-                            src={item.product.images[0]}
-                            alt={item.product.name}
-                            className="w-full h-full object-cover rounded-lg"
-                          />
-                        ) : (
-                          <Package className="w-12 h-12 text-gray-300" />
+            
+            {/* LEFT SIDE: Cart Items & Profile Check */}
+            <div className="lg:col-span-2 space-y-6">
+              
+              {/* Phone Number Requirement Section */}
+              <Card className={!profile?.phone ? "border-red-300 bg-red-50" : "border-green-200 bg-green-50"}>
+                <CardContent className="p-6">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Phone className="h-5 w-5 text-gray-700" />
+                    <h3 className="font-bold text-gray-900">Contact Phone Number (Required)</h3>
+                  </div>
+                  
+                  <div className="flex gap-3">
+                    <Input 
+                      placeholder="01XXXXXXXXX" 
+                      value={manualPhone}
+                      onChange={(e) => setManualPhone(e.target.value)}
+                      className="bg-white max-w-xs"
+                    />
+                    <Button 
+                      onClick={handleSavePhone} 
+                      disabled={isSavingPhone || manualPhone === profile?.phone}
+                      variant={!profile?.phone ? "default" : "outline"}
+                    >
+                      {isSavingPhone ? "Saving..." : !profile?.phone ? "Save Number" : "Update"}
+                    </Button>
+                  </div>
+                  {!profile?.phone && (
+                    <p className="text-red-600 text-sm mt-2 flex items-center">
+                      <AlertCircle className="h-4 w-4 mr-1"/> 
+                      You cannot confirm the order without saving a phone number.
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Cart Items List */}
+              <Card>
+                <CardContent className="p-6 divide-y">
+                  {items.map((item) => (
+                    <div key={item.id} className="flex py-4">
+                      <div className="h-20 w-20 flex-shrink-0 overflow-hidden rounded-md border border-gray-200 bg-gray-100">
+                        {item.product?.images?.[0] && (
+                          <img src={item.product.images[0]} alt={item.product.name} className="h-full w-full object-cover" />
                         )}
                       </div>
-
-                      <div className="flex-1">
-                        <Link href={`/products/${item.product?.slug}`}>
-                          <h3 className="font-semibold text-lg mb-1 hover:text-blue-900 transition">
-                            {item.product?.name}
-                          </h3>
-                        </Link>
-                        <p className="text-gray-600 text-sm mb-2">
-                          ৳{item.product?.price} each
-                        </p>
-
-                        <div className="flex items-center space-x-2">
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                          >
-                            <Minus className="h-3 w-3" />
-                          </Button>
-                          <Input
-                            type="number"
-                            value={item.quantity}
-                            onChange={(e) => {
-                              const val = parseInt(e.target.value) || 1;
-                              updateQuantity(item.id, val);
-                            }}
-                            className="w-20 h-8 text-center"
-                            min="1"
-                          />
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                          >
-                            <Plus className="h-3 w-3" />
-                          </Button>
+                      <div className="ml-4 flex flex-1 flex-col justify-between">
+                        <div className="flex justify-between font-medium text-gray-900">
+                          <h3>{item.product?.name}</h3>
+                          <p>৳{(item.product?.price || 0) * item.quantity}</p>
                         </div>
-                      </div>
-
-                      <div className="text-right">
-                        <div className="text-xl font-bold text-blue-900 mb-2">
-                          ৳{((item.product?.price || 0) * item.quantity).toFixed(2)}
+                        <div className="flex items-center justify-between text-sm mt-2">
+                          <div className="flex items-center gap-2 border rounded-md p-1">
+                            <button className="px-2" onClick={() => updateQuantity(item.id, item.quantity - 1)}>-</button>
+                            <span>{item.quantity}</span>
+                            <button className="px-2" onClick={() => updateQuantity(item.id, item.quantity + 1)}>+</button>
+                          </div>
+                          <button onClick={() => removeItem(item.id)} className="text-red-600 flex items-center hover:underline">
+                            <Trash2 className="h-4 w-4 mr-1" /> Remove
+                          </button>
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleRemoveItem(item.id, item.product?.name || 'Product')}
-                          className="text-red-600 hover:text-red-700"
-                        >
-                          <Trash2 className="h-4 w-4 mr-1" />
-                          Remove
-                        </Button>
                       </div>
                     </div>
-                  </CardContent>
-                </Card>
-              ))}
-
-              <Card>
-                <CardContent className="p-6">
-                  <Label htmlFor="customer-note" className="text-base font-semibold mb-2 block">
-                    Note for Seller (Optional)
-                  </Label>
-                  <Textarea
-                    id="customer-note"
-                    placeholder="Add any special instructions or comments about your order..."
-                    value={customerNote}
-                    onChange={(e) => setCustomerNote(e.target.value)}
-                    className="min-h-[100px]"
-                  />
+                  ))}
                 </CardContent>
               </Card>
             </div>
 
-            <div className="space-y-4">
-              <Card>
-                <CardContent className="p-6">
-                  <Label htmlFor="coupon-code" className="text-base font-semibold mb-2 block">
-                    Discount Code
-                  </Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="coupon-code"
-                      placeholder="Enter coupon code"
-                      value={couponCode}
-                      onChange={(e) => setCouponCode(e.target.value)}
-                    />
-                    <Button
-                      variant="outline"
-                      onClick={handleApplyCoupon}
-                      disabled={applyingCoupon || !couponCode.trim()}
-                    >
-                      <Tag className="h-4 w-4 mr-2" />
-                      {applyingCoupon ? 'Applying...' : 'Apply'}
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+            {/* RIGHT SIDE: Order Summary */}
+            <div className="lg:col-span-1">
+              <Card className="sticky top-20 shadow-lg border-blue-100">
+                <CardContent className="p-6 space-y-6">
+                  <h2 className="text-lg font-bold text-gray-900">Order Summary</h2>
 
-              <Card>
-                <CardContent className="p-6">
-                  <h3 className="text-xl font-bold mb-4">Order Summary</h3>
-
-                  <div className="space-y-3 mb-6">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Subtotal:</span>
-                      <span className="font-semibold">৳{subtotal.toFixed(2)}</span>
-                    </div>
-                    {discount > 0 && (
-                      <div className="flex justify-between text-green-600">
-                        <span>Discount:</span>
-                        <span className="font-semibold">-৳{discount.toFixed(2)}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Shipping:</span>
-                      <span className="text-sm font-semibold">Calculated at checkout</span>
-                    </div>
-                    <div className="border-t pt-3">
-                      <div className="flex justify-between">
-                        <span className="text-lg font-bold">Total:</span>
-                        <span className="text-lg font-bold text-blue-900">
-                          ৳{total.toFixed(2)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
+                  {/* 1. Location Selector */}
                   <div className="space-y-3">
-                    <Button className="w-full bg-blue-900 hover:bg-blue-800" size="lg">
-                      Check Out
-                    </Button>
-
-                    <Link href="/products">
-                      <Button variant="outline" className="w-full">
-                        Continue Shopping
-                      </Button>
-                    </Link>
+                    <Label className="flex items-center gap-2 text-gray-600">
+                      <MapPin className="h-4 w-4" /> Shipping Area
+                    </Label>
+                    <RadioGroup 
+                      value={deliveryLocation} 
+                      onValueChange={(val: 'inside' | 'outside') => setDeliveryLocation(val)}
+                      className="flex flex-col gap-2"
+                    >
+                      <div className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition ${deliveryLocation === 'inside' ? 'border-blue-600 bg-blue-50 ring-1 ring-blue-600' : 'hover:bg-gray-50'}`}>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="inside" id="inside" />
+                          <Label htmlFor="inside" className="cursor-pointer">Inside Dhaka</Label>
+                        </div>
+                        <span className="font-bold text-gray-900">৳{SHIPPING_INSIDE_DHAKA}</span>
+                      </div>
+                      
+                      <div className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition ${deliveryLocation === 'outside' ? 'border-blue-600 bg-blue-50 ring-1 ring-blue-600' : 'hover:bg-gray-50'}`}>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="outside" id="outside" />
+                          <Label htmlFor="outside" className="cursor-pointer">Outside Dhaka</Label>
+                        </div>
+                        <span className="font-bold text-gray-900">৳{SHIPPING_OUTSIDE_DHAKA}</span>
+                      </div>
+                    </RadioGroup>
                   </div>
+
+                  {/* 2. Payment Method (Fixed) */}
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2 text-gray-600">
+                      <Truck className="h-4 w-4" /> Payment Method
+                    </Label>
+                    <div className="flex items-center justify-center p-3 bg-gray-100 rounded-lg border border-gray-200 text-gray-700 font-medium">
+                      Cash on Delivery (COD)
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  {/* 3. Calculations */}
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Subtotal</span>
+                      <span>৳{subtotal}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Shipping</span>
+                      <span>৳{shippingCost}</span>
+                    </div>
+                    <Separator className="my-2" />
+                    <div className="flex justify-between text-lg font-bold text-blue-900">
+                      <span>Total to Pay</span>
+                      <span>৳{total}</span>
+                    </div>
+                  </div>
+
+                  {/* 4. Confirm Button */}
+                  <Button 
+                    className="w-full bg-blue-900 hover:bg-blue-800 h-12 text-lg shadow-md" 
+                    onClick={handleConfirmOrder}
+                    disabled={isPlacingOrder || !user || !profile?.phone} // DISABLED IF NO PHONE
+                  >
+                    {isPlacingOrder ? 'Processing...' : 'Confirm Order'}
+                  </Button>
+                  
+                  {/* Login Warning */}
+                  {!user && (
+                    <p className="text-xs text-center text-red-500">
+                      You must <Link href="/login" className="underline font-bold">login</Link> to place an order.
+                    </p>
+                  )}
                 </CardContent>
               </Card>
             </div>
           </div>
         )}
       </div>
-
       <Footer />
     </div>
   );
