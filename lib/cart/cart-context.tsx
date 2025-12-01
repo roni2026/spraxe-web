@@ -47,7 +47,49 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // 1. MERGE LOGIC: Moves local items to database when user logs in
+  const mergeLocalCart = async (userId: string) => {
+    const localCart = localStorage.getItem('cart');
+    if (!localCart) return;
+
+    const localItems = JSON.parse(localCart);
+    if (localItems.length === 0) return;
+
+    console.log("Merging local cart to database...");
+
+    for (const item of localItems) {
+      // Check if this product is already in the DB cart
+      const { data: existing } = await supabase
+        .from('cart_items')
+        .select('id, quantity')
+        .eq('user_id', userId)
+        .eq('product_id', item.product_id)
+        .maybeSingle();
+
+      if (existing) {
+        // If exists, add to the quantity
+        await supabase
+          .from('cart_items')
+          .update({ quantity: existing.quantity + item.quantity })
+          .eq('id', existing.id);
+      } else {
+        // If new, insert it
+        await supabase
+          .from('cart_items')
+          .insert({
+            user_id: userId,
+            product_id: item.product_id,
+            quantity: item.quantity,
+          });
+      }
+    }
+
+    // Clear local storage so we don't merge again next time
+    localStorage.removeItem('cart');
+  };
+
   const fetchCart = async () => {
+    // SCENARIO A: User NOT logged in (Load from Local Storage)
     if (!user) {
       const localCart = localStorage.getItem('cart');
       if (localCart) {
@@ -64,7 +106,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             const cartItems = localItems.map((item: any) => {
               const product = products.find(p => p.id === item.product_id);
               return {
-                id: item.product_id,
+                id: item.product_id, // Use product ID as dummy ID for guest
                 product_id: item.product_id,
                 quantity: item.quantity,
                 product: product || null,
@@ -73,13 +115,18 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
             setItems(cartItems);
           }
+        } else {
+          setItems([]);
         }
+      } else {
+        setItems([]);
       }
       setLoading(false);
       return;
     }
 
-    const { data, error } = await supabase
+    // SCENARIO B: User IS logged in (Load from Database)
+    const { data } = await supabase
       .from('cart_items')
       .select(`
         id,
@@ -108,11 +155,20 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setLoading(false);
   };
 
+  // Trigger merge and fetch when User changes
   useEffect(() => {
-    fetchCart();
+    const initCart = async () => {
+      if (user) {
+        // If they just logged in, try to merge first!
+        await mergeLocalCart(user.id);
+      }
+      await fetchCart();
+    };
+    initCart();
   }, [user]);
 
   const addToCart = async (productId: string, quantity: number = 1) => {
+    // 1. GUEST: Add to Local Storage
     if (!user) {
       const localCart = localStorage.getItem('cart');
       const cart = localCart ? JSON.parse(localCart) : [];
@@ -129,6 +185,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    // 2. USER: Add to Database
+    // Check if item exists in UI state first to save a DB call
     const existingItem = items.find(item => item.product_id === productId);
 
     if (existingItem) {
@@ -158,6 +216,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       const localCart = localStorage.getItem('cart');
       if (localCart) {
         const cart = JSON.parse(localCart);
+        // Guests use product_id as the item ID
         const item = cart.find((item: any) => item.product_id === itemId);
         if (item) {
           item.quantity = quantity;
