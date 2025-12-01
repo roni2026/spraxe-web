@@ -92,6 +92,7 @@ export default function CartPage() {
         .insert({
           user_id: user.id,
           total: total,
+          total_amount: 0,
           subtotal: subtotal,
           tax_amount: 0,
           discount_amount: 0,
