@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea'; // Import Textarea
+import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ShoppingBag, User, MapPin, Package, FileText, Pencil, Save, X, Phone, Home } from 'lucide-react';
 import Link from 'next/link';
@@ -47,8 +47,8 @@ export default function DashboardPage() {
   useEffect(() => {
     if (profile) {
       if (profile.phone) setPhoneInput(profile.phone);
-      // @ts-ignore (Ignore TS error if address column isn't in types yet)
-      if (profile.address) setAddressInput(profile.address);
+      // ✅ FIX: Cast to any to avoid TypeScript error for new column
+      if ((profile as any).address) setAddressInput((profile as any).address);
     }
   }, [profile]);
 
@@ -93,7 +93,7 @@ export default function DashboardPage() {
     
     const { error } = await supabase
       .from('profiles')
-      .update({ address: addressInput }) // Ensure 'address' column exists in DB
+      .update({ address: addressInput }) 
       .eq('id', user.id);
     
     if (error) {
@@ -239,7 +239,8 @@ export default function DashboardPage() {
                       </label>
                       {!isEditingAddress && (
                         <Button variant="ghost" size="sm" onClick={() => setIsEditingAddress(true)} className="text-blue-600 hover:text-blue-700">
-                          <Pencil className="w-3 h-3 mr-1" /> {profile?.address ? 'Edit Address' : 'Add Address'}
+                          {/* ✅ FIX: Cast to any here to fix the build error */}
+                          <Pencil className="w-3 h-3 mr-1" /> {(profile as any)?.address ? 'Edit Address' : 'Add Address'}
                         </Button>
                       )}
                     </div>
@@ -256,15 +257,16 @@ export default function DashboardPage() {
                            <Button onClick={handleSaveAddress} disabled={isSaving} className="bg-blue-900">
                              {isSaving ? 'Saving...' : 'Save Address'}
                            </Button>
-                           <Button variant="outline" onClick={() => { setIsEditingAddress(false); setAddressInput(profile?.address || ''); }}>
+                           <Button variant="outline" onClick={() => { setIsEditingAddress(false); setAddressInput((profile as any)?.address || ''); }}>
                              Cancel
                            </Button>
                          </div>
                       </div>
                     ) : (
-                      <div className={`p-4 rounded-lg border ${profile?.address ? 'bg-gray-50 border-gray-200' : 'bg-yellow-50 border-yellow-200 border-dashed'}`}>
-                         {profile?.address ? (
-                           <p className="text-gray-900 whitespace-pre-wrap">{profile.address}</p>
+                      // ✅ FIX: Cast to any here as well
+                      <div className={`p-4 rounded-lg border ${(profile as any)?.address ? 'bg-gray-50 border-gray-200' : 'bg-yellow-50 border-yellow-200 border-dashed'}`}>
+                         {(profile as any)?.address ? (
+                           <p className="text-gray-900 whitespace-pre-wrap">{(profile as any).address}</p>
                          ) : (
                            <div className="text-center py-4 text-gray-500">
                              <p>You haven't saved an address yet.</p>
