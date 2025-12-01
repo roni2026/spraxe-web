@@ -2,15 +2,18 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabase/client';
+import { Header } from '@/components/layout/header';
+import { Footer } from '@/components/layout/footer';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Phone, Mail, Loader2, Eye, EyeOff, ArrowLeft, Package } from 'lucide-react';
-import Link from 'next/link';
+import { Phone, Mail, Loader2, Eye, EyeOff } from 'lucide-react';
 
 export default function LoginPage() {
   const { toast } = useToast();
@@ -37,48 +40,58 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="container relative flex-col items-center justify-center grid lg:max-w-none lg:grid-cols-1 lg:px-0 min-h-[80vh] py-10">
-      <div className="mx-auto flex w-full flex-col justify-center space-y-6 sm:w-[400px] border p-8 rounded-lg shadow-sm bg-white">
-        
-        {/* LOGO SECTION */}
-        <div className="flex flex-col space-y-2 text-center">
-          <div className="flex justify-center mb-2">
-            <div className="h-12 w-12 bg-blue-900 rounded-lg flex items-center justify-center">
-               <Package className="h-8 w-8 text-white" />
-            </div>
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight text-blue-900">
-            Welcome to Spraxe
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Sign in to your account to continue
-          </p>
+    <div className="min-h-screen flex flex-col bg-gray-50">
+      {/* 1. Header added per request */}
+      <Header />
+
+      <div className="container mx-auto px-4 py-12 flex-1 flex items-center justify-center">
+        <div className="w-full max-w-md">
+          <Card className="border-blue-100 shadow-sm">
+            <CardHeader className="text-center pb-2">
+              <div className="flex justify-center mb-4">
+                {/* 2. Your Logo (Converted to RAW link so it displays) */}
+                <img 
+                  src="https://raw.githubusercontent.com/roni2026/spraxe-web/c10f397a17044cc3a3ec2da08a7456d46c93d73f/public/spraxe.png" 
+                  alt="Spraxe Logo" 
+                  className="h-16 w-auto object-contain"
+                />
+              </div>
+              <CardTitle className="text-2xl font-bold text-blue-900">Welcome Back</CardTitle>
+              <CardDescription>
+                Sign in to your account to continue shopping
+              </CardDescription>
+            </CardHeader>
+            
+            <CardContent>
+              {/* AUTH FORMS */}
+              <AuthForms 
+                onLoading={setIsLoading} 
+                isLoading={isLoading} 
+                onGoogleLogin={handleGoogleSignIn} 
+              />
+
+              <p className="mt-6 text-center text-xs text-gray-500">
+                By clicking continue, you agree to our{' '}
+                <Link href="/terms" className="underline hover:text-blue-900">
+                  Terms
+                </Link>{' '}
+                and{' '}
+                <Link href="/privacy" className="underline hover:text-blue-900">
+                  Privacy Policy
+                </Link>.
+              </p>
+            </CardContent>
+          </Card>
         </div>
-
-        {/* AUTH FORMS */}
-        <AuthForms 
-          onLoading={setIsLoading} 
-          isLoading={isLoading} 
-          onGoogleLogin={handleGoogleSignIn} 
-        />
-
-        <p className="px-8 text-center text-sm text-muted-foreground">
-          By clicking continue, you agree to our{' '}
-          <Link href="/terms" className="underline underline-offset-4 hover:text-primary">
-            Terms of Service
-          </Link>{' '}
-          and{' '}
-          <Link href="/privacy" className="underline underline-offset-4 hover:text-primary">
-            Privacy Policy
-          </Link>
-          .
-        </p>
       </div>
+
+      {/* 3. Footer added per request */}
+      <Footer />
     </div>
   );
 }
 
-// Sub-component to handle the tab switching logic cleanly
+// --- SUB-COMPONENT FOR FORM LOGIC ---
 function AuthForms({ onLoading, isLoading, onGoogleLogin }: { onLoading: (v: boolean) => void, isLoading: boolean, onGoogleLogin: () => void }) {
   const { toast } = useToast();
   const router = useRouter();
@@ -110,7 +123,6 @@ function AuthForms({ onLoading, isLoading, onGoogleLogin }: { onLoading: (v: boo
       if (error) throw error;
 
       if (data.user) {
-         // Check Role
          const { data: profile } = await supabase
           .from('profiles')
           .select('role')
@@ -169,7 +181,6 @@ function AuthForms({ onLoading, isLoading, onGoogleLogin }: { onLoading: (v: boo
       if (error) throw error;
 
       if (data.user) {
-        // Check/Create Profile Logic could go here or in AuthContext
         const { data: profile } = await supabase
           .from('profiles')
           .select('role')
@@ -188,7 +199,7 @@ function AuthForms({ onLoading, isLoading, onGoogleLogin }: { onLoading: (v: boo
 
   return (
     <Tabs defaultValue="phone" className="w-full">
-      <TabsList className="grid w-full grid-cols-2 mb-4">
+      <TabsList className="grid w-full grid-cols-2 mb-6">
         <TabsTrigger value="phone">Phone</TabsTrigger>
         <TabsTrigger value="email">Email</TabsTrigger>
       </TabsList>
@@ -211,6 +222,7 @@ function AuthForms({ onLoading, isLoading, onGoogleLogin }: { onLoading: (v: boo
                   className="pl-10"
                 />
               </div>
+              <p className="text-xs text-gray-500">11-digit mobile number</p>
             </div>
             <Button onClick={handleSendOTP} disabled={isLoading || phoneNumber.length < 11} className="w-full bg-blue-900 hover:bg-blue-800">
               {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Send OTP'}
@@ -218,8 +230,8 @@ function AuthForms({ onLoading, isLoading, onGoogleLogin }: { onLoading: (v: boo
           </>
         ) : (
           <div className="space-y-4 animate-in fade-in slide-in-from-right-4">
-             <div className="text-center">
-                <p className="text-sm text-gray-500">Enter code sent to {phoneNumber}</p>
+             <div className="text-center bg-blue-50 p-3 rounded-md">
+                <p className="text-sm text-blue-900">Enter code sent to <br/><span className="font-bold">{phoneNumber}</span></p>
              </div>
              <div className="space-y-2">
               <Label htmlFor="otp">Verification Code</Label>
@@ -229,14 +241,14 @@ function AuthForms({ onLoading, isLoading, onGoogleLogin }: { onLoading: (v: boo
                 value={otp}
                 onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
                 maxLength={6}
-                className="text-center text-lg tracking-widest"
+                className="text-center text-xl tracking-widest font-bold"
               />
             </div>
             <Button onClick={handleVerifyOTP} disabled={isLoading} className="w-full bg-blue-900 hover:bg-blue-800">
               {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Verify & Login'}
             </Button>
-            <Button variant="ghost" onClick={() => setPhoneStep('phone')} className="w-full">
-              Back to Number
+            <Button variant="ghost" onClick={() => setPhoneStep('phone')} className="w-full text-gray-500">
+              Change Phone Number
             </Button>
           </div>
         )}
@@ -288,7 +300,7 @@ function AuthForms({ onLoading, isLoading, onGoogleLogin }: { onLoading: (v: boo
         </div>
       </TabsContent>
 
-      <div className="relative my-4">
+      <div className="relative my-6">
         <Separator />
         <div className="absolute inset-0 flex items-center justify-center">
           <span className="bg-white px-2 text-xs text-gray-500">OR</span>
