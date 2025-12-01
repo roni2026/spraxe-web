@@ -93,6 +93,7 @@ export default function CartPage() {
           user_id: user.id,
           total: total,
           subtotal: subtotal,
+          tax_amount: 0,
           status: 'pending',
           payment_status: 'pending',
           shipping_address: finalAddress, 
