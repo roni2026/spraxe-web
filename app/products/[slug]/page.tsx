@@ -89,28 +89,32 @@ export default function ProductDetailPage({ params }: { params: { slug: string }
   };
 
 const handleAddToCart = async () => {
-    // REMOVED THE LOGIN CHECK HERE
-    // The CartContext will handle saving to localStorage automatically!
-    
-    if (!product) return;
+    // ❌ DELETE THESE LINES if you see them:
+    // if (!user) {
+    //   router.push('/login'); 
+    //   return;
+    // }
 
-    setAdding(true);
-    try {
-      await addToCartContext(product.id, quantity);
-      toast({
-        title: 'Added to Cart',
-        description: `${product.name} (${quantity} ${product.unit}) added to your cart`,
-      });
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to add to cart. Please try again.',
-        variant: 'destructive',
-      });
-    } finally {
-      setAdding(false);
-    }
-  };
+    // ✅ KEEP THIS:
+    if (!product) return;
+
+    setAdding(true);
+    try {
+      await addToCartContext(product.id, quantity);
+      toast({
+        title: 'Added to Cart',
+        description: `${product.name} (${quantity} ${product.unit}) added to your cart`,
+      });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to add to cart.',
+        variant: 'destructive',
+      });
+    } finally {
+      setAdding(false);
+    }
+  };
 
   const handleBuyNow = async () => {
     if (!product) return;
