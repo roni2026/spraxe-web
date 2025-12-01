@@ -91,6 +91,7 @@ export default function CartPage() {
         .from('orders')
         .insert({
           user_id: user.id,
+          product_name: item.product.name,
           total: total,
           total_amount: 0,
           subtotal: subtotal,
