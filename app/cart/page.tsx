@@ -91,7 +91,6 @@ export default function CartPage() {
         .from('orders')
         .insert({
           user_id: user.id,
-          product_name: item.product.name,
           total: total,
           total_amount: 0,
           subtotal: subtotal,
@@ -115,6 +114,7 @@ export default function CartPage() {
       const orderItems = items.map(item => ({
         order_id: order.id,
         product_id: item.product_id,
+        product_name: item.product.name,
         quantity: item.quantity,
         unit_price: item.product.price || 0,
         total_price: (item.product.price || 0) * item.quantity
