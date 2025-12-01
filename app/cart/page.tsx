@@ -33,7 +33,7 @@ export default function CartPage() {
   const [isSavingPhone, setIsSavingPhone] = useState(false);
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
 
-  // Sync state with profile
+  // Sync state with profile (fallback)
   useEffect(() => {
     if (profile) {
       if (profile.phone) setManualPhone(profile.phone);
@@ -65,10 +65,12 @@ export default function CartPage() {
   const handleConfirmOrder = async () => {
     if (!user) return router.push('/login');
     
+    // Determine final data (Profile > Manual)
     const finalPhone = profile?.phone || manualPhone;
     // @ts-ignore
     const finalAddress = profile?.address || manualAddress;
 
+    // Validation
     if (!finalPhone) {
       toast({ title: "Phone Required", description: "Please add a contact number.", variant: "destructive" });
       return;
@@ -81,6 +83,10 @@ export default function CartPage() {
     setIsPlacingOrder(true);
 
     try {
+      // Generate Order Number
+      const orderNumber = `ORD-${Date.now().toString().slice(-8)}`;
+
+      // Create Order
       const { data: order, error: orderError } = await supabase
         .from('orders')
         .insert({
@@ -92,13 +98,15 @@ export default function CartPage() {
           delivery_location: deliveryLocation,
           shipping_cost: shippingCost,
           payment_method: 'Cash on Delivery',
-          contact_number: finalPhone
+          contact_number: finalPhone,
+          order_number: orderNumber // Using generated order number
         })
         .select()
         .single();
 
       if (orderError) throw orderError;
 
+      // Create Order Items
       const orderItems = items.map(item => ({
         order_id: order.id,
         product_id: item.product_id,
@@ -110,17 +118,20 @@ export default function CartPage() {
       const { error: itemsError } = await supabase.from('order_items').insert(orderItems);
       if (itemsError) throw itemsError;
 
+      // Success
       await clearCart();
-      toast({ title: "Order Confirmed!", description: "We will ship your items soon." });
+      toast({ title: "Order Confirmed!", description: `Order #${orderNumber} placed successfully.` });
       router.push('/dashboard'); 
 
     } catch (error: any) {
+      console.error(error);
       toast({ title: "Order Failed", description: error.message, variant: "destructive" });
     } finally {
       setIsPlacingOrder(false);
     }
   };
 
+  // Loading State (Prevents Flash/Redirect Loop)
   if (authLoading || cartLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -203,7 +214,8 @@ export default function CartPage() {
                       )}
                     </div>
                     {hasPhone ? (
-                      <div className="text-sm font-medium text-gray-900 bg-gray-50 p-2 rounded border">
+                      <div className="text-sm font-medium text-gray-900 bg-gray-50 p-2 rounded border flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-green-600" />
                         {profile.phone}
                       </div>
                     ) : (
