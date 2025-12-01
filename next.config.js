@@ -20,6 +20,16 @@ const nextConfig = {
       },
     ],
   },
+  // ADDED: This fixes the 404 error by redirecting the old link to the new page
+  async redirects() {
+    return [
+      {
+        source: '/auth/login',
+        destination: '/login',
+        permanent: true,
+      },
+    ]
+  },
 };
 
 module.exports = nextConfig;
