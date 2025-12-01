@@ -11,11 +11,28 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ShoppingBag, User, MapPin, Package, FileText, Pencil, Save, X, Phone, Home } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
+
+// --- BANGLADESH LOCATION DATA ---
+const BD_DIVISIONS = [
+  "Barisal", "Chittagong", "Dhaka", "Khulna", "Mymensingh", "Rajshahi", "Rangpur", "Sylhet"
+];
+
+const BD_DISTRICTS: Record<string, string[]> = {
+  Barisal: ["Barguna", "Barisal", "Bhola", "Jhalokati", "Patuakhali", "Pirojpur"],
+  Chittagong: ["Bandarban", "Brahmanbaria", "Chandpur", "Chittagong", "Comilla", "Cox's Bazar", "Feni", "Khagrachhari", "Lakshmipur", "Noakhali", "Rangamati"],
+  Dhaka: ["Dhaka", "Faridpur", "Gazipur", "Gopalganj", "Kishoreganj", "Madaripur", "Manikganj", "Munshiganj", "Narayanganj", "Narsingdi", "Rajbari", "Shariatpur", "Tangail"],
+  Khulna: ["Bagerhat", "Chuadanga", "Jessore", "Jhenaidah", "Khulna", "Kushtia", "Magura", "Meherpur", "Narail", "Satkhira"],
+  Mymensingh: ["Jamalpur", "Mymensingh", "Netrokona", "Sherpur"],
+  Rajshahi: ["Bogra", "Chapainawabganj", "Joypurhat", "Naogaon", "Natore", "Pabna", "Rajshahi", "Sirajganj"],
+  Rangpur: ["Dinajpur", "Gaibandha", "Kurigram", "Lalmonirhat", "Nilphamari", "Panchagarh", "Rangpur", "Thakurgaon"],
+  Sylhet: ["Habiganj", "Moulvibazar", "Sunamganj", "Sylhet"]
+};
 
 export default function DashboardPage() {
   const { user, profile, refreshProfile } = useAuth();
@@ -31,9 +48,14 @@ export default function DashboardPage() {
   
   // Address Editing State
   const [isEditingAddress, setIsEditingAddress] = useState(false);
-  const [addressInput, setAddressInput] = useState('');
-
   const [isSaving, setIsSaving] = useState(false);
+
+  // Structured Address State
+  const [division, setDivision] = useState('');
+  const [district, setDistrict] = useState('');
+  const [city, setCity] = useState('');
+  const [road, setRoad] = useState('');
+  const [zipCode, setZipCode] = useState('');
 
   useEffect(() => {
     if (!user) {
@@ -43,12 +65,19 @@ export default function DashboardPage() {
     fetchOrders();
   }, [user]);
 
-  // Sync inputs with profile data when it loads
+  // Sync inputs with profile data
   useEffect(() => {
     if (profile) {
       if (profile.phone) setPhoneInput(profile.phone);
-      // ✅ FIX: Cast to any to avoid TypeScript error for new column
-      if ((profile as any).address) setAddressInput((profile as any).address);
+      
+      // Load structured address fields if they exist
+      // Using 'as any' to bypass TS check until types are regenerated
+      const p = profile as any;
+      if (p.division) setDivision(p.division);
+      if (p.district) setDistrict(p.district);
+      if (p.city) setCity(p.city);
+      if (p.road) setRoad(p.road);
+      if (p.zip_code) setZipCode(p.zip_code);
     }
   }, [profile]);
 
@@ -67,16 +96,16 @@ export default function DashboardPage() {
   const handleSavePhone = async () => {
     if (!user) return;
     if (phoneInput.length < 11) {
-      toast({ title: "Invalid Phone", description: "Phone number must be at least 11 digits", variant: "destructive" });
+      toast({ title: "Invalid Phone", description: "Must be at least 11 digits", variant: "destructive" });
       return;
     }
     setIsSaving(true);
     const { error } = await supabase.from('profiles').update({ phone: phoneInput }).eq('id', user.id);
     
     if (error) {
-      toast({ title: "Error", description: "Failed to update phone number", variant: "destructive" });
+      toast({ title: "Error", description: "Failed to update phone", variant: "destructive" });
     } else {
-      toast({ title: "Success", description: "Phone number updated successfully" });
+      toast({ title: "Success", description: "Phone updated" });
       await refreshProfile();
       setIsEditingPhone(false);
     }
@@ -85,15 +114,28 @@ export default function DashboardPage() {
 
   const handleSaveAddress = async () => {
     if (!user) return;
-    if (!addressInput.trim()) {
-      toast({ title: "Invalid Address", description: "Address cannot be empty", variant: "destructive" });
+    if (!division || !district || !city || !road) {
+      toast({ title: "Missing Fields", description: "Please fill all address fields", variant: "destructive" });
       return;
     }
+    
     setIsSaving(true);
+    
+    // Create the full formatted string for display/cart
+    const fullAddress = `${road}, ${city}, ${zipCode ? zipCode + ', ' : ''}${district}, ${division}`;
+
+    const updates = {
+      division,
+      district,
+      city,
+      road,
+      zip_code: zipCode,
+      address: fullAddress // We save the formatted string too!
+    };
     
     const { error } = await supabase
       .from('profiles')
-      .update({ address: addressInput }) 
+      .update(updates) 
       .eq('id', user.id);
     
     if (error) {
@@ -172,7 +214,7 @@ export default function DashboardPage() {
             </Card>
           </TabsContent>
 
-          {/* PROFILE TAB (Phone Edit) */}
+          {/* PROFILE TAB */}
           <TabsContent value="profile">
             <Card>
               <CardHeader>
@@ -192,7 +234,7 @@ export default function DashboardPage() {
                 </div>
                 <div className="h-px bg-gray-200" />
                 
-                {/* Editable Phone */}
+                {/* Phone Section */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <label className="text-sm font-medium text-gray-500 flex items-center gap-2">
@@ -224,7 +266,7 @@ export default function DashboardPage() {
             </Card>
           </TabsContent>
 
-          {/* ADDRESSES TAB (Address Edit - UPDATED) */}
+          {/* ADDRESSES TAB (Cascading Dropdown Logic) */}
           <TabsContent value="addresses">
             <Card>
               <CardHeader>
@@ -239,34 +281,101 @@ export default function DashboardPage() {
                       </label>
                       {!isEditingAddress && (
                         <Button variant="ghost" size="sm" onClick={() => setIsEditingAddress(true)} className="text-blue-600 hover:text-blue-700">
-                          {/* ✅ FIX: Cast to any here to fix the build error */}
                           <Pencil className="w-3 h-3 mr-1" /> {(profile as any)?.address ? 'Edit Address' : 'Add Address'}
                         </Button>
                       )}
                     </div>
 
                     {isEditingAddress ? (
-                      <div className="space-y-3">
-                         <Textarea 
-                            value={addressInput} 
-                            onChange={(e) => setAddressInput(e.target.value)} 
-                            placeholder="House #, Road #, Area, City..."
-                            className="bg-white min-h-[100px]"
-                         />
-                         <div className="flex gap-2">
+                      <div className="space-y-4 border p-4 rounded-lg bg-gray-50">
+                         {/* Division Dropdown */}
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                           <div className="space-y-2">
+                             <Label>Division</Label>
+                             <Select value={division} onValueChange={(val) => { setDivision(val); setDistrict(''); }}>
+                               <SelectTrigger className="bg-white">
+                                 <SelectValue placeholder="Select Division" />
+                               </SelectTrigger>
+                               <SelectContent>
+                                 {BD_DIVISIONS.map(div => (
+                                   <SelectItem key={div} value={div}>{div}</SelectItem>
+                                 ))}
+                               </SelectContent>
+                             </Select>
+                           </div>
+
+                           {/* District Dropdown (Dependent) */}
+                           <div className="space-y-2">
+                             <Label>District</Label>
+                             <Select value={district} onValueChange={setDistrict} disabled={!division}>
+                               <SelectTrigger className="bg-white">
+                                 <SelectValue placeholder="Select District" />
+                               </SelectTrigger>
+                               <SelectContent>
+                                 {division && BD_DISTRICTS[division]?.map(dist => (
+                                   <SelectItem key={dist} value={dist}>{dist}</SelectItem>
+                                 ))}
+                               </SelectContent>
+                             </Select>
+                           </div>
+                         </div>
+
+                         {/* City & Zip */}
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                           <div className="space-y-2">
+                             <Label>City / Area</Label>
+                             <Input 
+                               placeholder="e.g. Uttara" 
+                               value={city} 
+                               onChange={(e) => setCity(e.target.value)} 
+                               className="bg-white"
+                             />
+                           </div>
+                           <div className="space-y-2">
+                             <Label>Zip Code</Label>
+                             <Input 
+                               placeholder="e.g. 1230" 
+                               value={zipCode} 
+                               onChange={(e) => setZipCode(e.target.value)} 
+                               className="bg-white"
+                             />
+                           </div>
+                         </div>
+
+                         {/* Road / Street */}
+                         <div className="space-y-2">
+                           <Label>Road / House No / Details</Label>
+                           <Input 
+                             placeholder="e.g. House 12, Road 5, Sector 4" 
+                             value={road} 
+                             onChange={(e) => setRoad(e.target.value)} 
+                             className="bg-white"
+                           />
+                         </div>
+
+                         {/* Buttons */}
+                         <div className="flex gap-2 pt-2">
                            <Button onClick={handleSaveAddress} disabled={isSaving} className="bg-blue-900">
                              {isSaving ? 'Saving...' : 'Save Address'}
                            </Button>
-                           <Button variant="outline" onClick={() => { setIsEditingAddress(false); setAddressInput((profile as any)?.address || ''); }}>
+                           <Button variant="outline" onClick={() => setIsEditingAddress(false)}>
                              Cancel
                            </Button>
                          </div>
                       </div>
                     ) : (
-                      // ✅ FIX: Cast to any here as well
+                      // View Mode
                       <div className={`p-4 rounded-lg border ${(profile as any)?.address ? 'bg-gray-50 border-gray-200' : 'bg-yellow-50 border-yellow-200 border-dashed'}`}>
                          {(profile as any)?.address ? (
-                           <p className="text-gray-900 whitespace-pre-wrap">{(profile as any).address}</p>
+                           <div className="space-y-1">
+                             <p className="text-gray-900 font-medium whitespace-pre-wrap">{(profile as any).address}</p>
+                             {/* Show individual fields if available just to confirm */}
+                             {(profile as any).division && (
+                               <p className="text-xs text-gray-500 mt-2 border-t pt-2">
+                                 Detailed: {(profile as any).road}, {(profile as any).city}, {(profile as any).district}
+                               </p>
+                             )}
+                           </div>
                          ) : (
                            <div className="text-center py-4 text-gray-500">
                              <p>You haven't saved an address yet.</p>
