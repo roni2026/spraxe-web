@@ -7,26 +7,42 @@ import { useAuth } from '@/lib/auth/auth-context';
 import { Order } from '@/lib/supabase/types';
 import { Header } from '@/components/layout/header';
 import { Footer } from '@/components/layout/footer';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input'; // Added Input
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ShoppingBag, User, MapPin, Package, FileText } from 'lucide-react';
+import { ShoppingBag, User, MapPin, Package, FileText, Pencil, Save, X, Phone } from 'lucide-react';
 import Link from 'next/link';
+import { useToast } from '@/hooks/use-toast'; // Added Toast
 
 export default function DashboardPage() {
-  const { user, profile } = useAuth();
+  const { user, profile, refreshProfile } = useAuth(); // Added refreshProfile
   const router = useRouter();
+  const { toast } = useToast(); // Added toast
+  
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Phone Editing State
+  const [isEditingPhone, setIsEditingPhone] = useState(false);
+  const [phoneInput, setPhoneInput] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
   useEffect(() => {
     if (!user) {
-      router.push('/auth/login');
+      router.push('/login'); // Fixed path from /auth/login to /login
       return;
     }
     fetchOrders();
   }, [user]);
+
+  // Sync phone input with profile data when it loads
+  useEffect(() => {
+    if (profile?.phone) {
+      setPhoneInput(profile.phone);
+    }
+  }, [profile]);
 
   const fetchOrders = async () => {
     if (!user) return;
@@ -39,6 +55,42 @@ export default function DashboardPage() {
 
     if (data) setOrders(data);
     setLoading(false);
+  };
+
+  const handleSavePhone = async () => {
+    if (!user) return;
+
+    if (phoneInput.length < 11) {
+      toast({
+        title: "Invalid Phone",
+        description: "Phone number must be at least 11 digits",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsSaving(true);
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({ phone: phoneInput })
+      .eq('id', user.id);
+
+    if (error) {
+      toast({
+        title: "Error",
+        description: "Failed to update phone number",
+        variant: "destructive"
+      });
+    } else {
+      toast({
+        title: "Success",
+        description: "Phone number updated successfully"
+      });
+      await refreshProfile(); // Refresh the context so other parts of the app know the phone is set
+      setIsEditingPhone(false);
+    }
+    setIsSaving(false);
   };
 
   const getStatusColor = (status: string) => {
@@ -58,7 +110,7 @@ export default function DashboardPage() {
       <Header />
 
       <div className="container mx-auto px-4 py-8 flex-1">
-        <h1 className="text-3xl font-bold mb-8">My Dashboard</h1>
+        <h1 className="text-3xl font-bold mb-8 text-gray-900">My Dashboard</h1>
 
         <Tabs defaultValue="orders" className="space-y-6">
           <TabsList>
@@ -76,6 +128,7 @@ export default function DashboardPage() {
             </TabsTrigger>
           </TabsList>
 
+          {/* ORDERS TAB */}
           <TabsContent value="orders">
             <Card>
               <CardHeader>
@@ -96,16 +149,16 @@ export default function DashboardPage() {
                     {orders.map((order) => (
                       <Card key={order.id}>
                         <CardContent className="p-4">
-                          <div className="flex items-center justify-between">
+                          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                             <div className="flex-1">
-                              <p className="font-semibold mb-1">Order #{order.order_number}</p>
+                              <p className="font-semibold mb-1">Order #{order.id.slice(0, 8)}</p>
                               <p className="text-sm text-gray-600">
                                 {new Date(order.created_at).toLocaleDateString()}
                               </p>
                             </div>
-                            <div className="text-right flex items-center gap-4">
+                            <div className="text-right flex items-center gap-4 justify-between md:justify-end w-full md:w-auto">
                               <div>
-                                <p className="font-bold text-blue-900 mb-1">৳{order.total}</p>
+                                <p className="font-bold text-blue-900 mb-1">৳{order.total_amount}</p>
                                 <Badge className={getStatusColor(order.status)}>
                                   {order.status}
                                 </Badge>
@@ -127,44 +180,102 @@ export default function DashboardPage() {
             </Card>
           </TabsContent>
 
+          {/* PROFILE TAB - UPDATED */}
           <TabsContent value="profile">
             <Card>
               <CardHeader>
                 <CardTitle>Profile Information</CardTitle>
+                <CardDescription>Manage your personal details</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <label className="text-sm font-medium text-gray-700">Full Name</label>
-                  <p className="text-lg">{profile?.full_name}</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-700">Email</label>
-                  <p className="text-lg">{user?.email}</p>
-                </div>
-                {profile?.phone && (
+              <CardContent className="space-y-6 max-w-2xl">
+                
+                {/* Basic Info (Read Only) */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <label className="text-sm font-medium text-gray-700">Phone</label>
-                    <p className="text-lg">{profile.phone}</p>
+                    <label className="text-sm font-medium text-gray-500">Full Name</label>
+                    <p className="text-lg font-medium text-gray-900 mt-1">{profile?.full_name || 'N/A'}</p>
                   </div>
-                )}
+                  <div>
+                    <label className="text-sm font-medium text-gray-500">Email</label>
+                    <p className="text-lg font-medium text-gray-900 mt-1">{user?.email}</p>
+                  </div>
+                </div>
+
+                <div className="h-px bg-gray-200" />
+
+                {/* Editable Phone Section */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm font-medium text-gray-500 flex items-center gap-2">
+                      <Phone className="h-4 w-4" /> Contact Phone
+                    </label>
+                    {!isEditingPhone && (
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => setIsEditingPhone(true)}
+                        className="text-blue-600 hover:text-blue-700"
+                      >
+                        <Pencil className="w-3 h-3 mr-1" /> Edit
+                      </Button>
+                    )}
+                  </div>
+
+                  {isEditingPhone ? (
+                    <div className="flex items-center gap-2 max-w-sm animate-in fade-in zoom-in-95 duration-200">
+                      <Input 
+                        value={phoneInput}
+                        onChange={(e) => setPhoneInput(e.target.value)}
+                        placeholder="01XXXXXXXXX"
+                        className="bg-white"
+                      />
+                      <Button onClick={handleSavePhone} disabled={isSaving} size="sm" className="bg-blue-900">
+                        {isSaving ? 'Saving...' : <Save className="w-4 h-4" />}
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => {
+                          setIsEditingPhone(false);
+                          setPhoneInput(profile?.phone || ''); // Reset to original
+                        }}
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <p className={`text-lg font-medium mt-1 ${!profile?.phone ? 'text-red-500' : 'text-gray-900'}`}>
+                      {profile?.phone || 'No phone number added'}
+                    </p>
+                  )}
+                  {!profile?.phone && !isEditingPhone && (
+                    <p className="text-xs text-red-500 mt-1">
+                      * Required for placing orders
+                    </p>
+                  )}
+                </div>
+
                 {profile?.company_name && (
                   <div>
-                    <label className="text-sm font-medium text-gray-700">Company</label>
-                    <p className="text-lg">{profile.company_name}</p>
+                    <div className="h-px bg-gray-200 my-4" />
+                    <label className="text-sm font-medium text-gray-500">Company</label>
+                    <p className="text-lg font-medium text-gray-900 mt-1">{profile.company_name}</p>
                   </div>
                 )}
               </CardContent>
             </Card>
           </TabsContent>
 
+          {/* ADDRESSES TAB */}
           <TabsContent value="addresses">
             <Card>
               <CardHeader>
                 <CardTitle>Saved Addresses</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-center py-12 text-gray-500">
-                  Add addresses during checkout
+                <div className="text-center py-12 text-gray-500 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                  <MapPin className="w-10 h-10 mx-auto mb-2 text-gray-300" />
+                  <p>Address management is currently handled during checkout.</p>
                 </div>
               </CardContent>
             </Card>
