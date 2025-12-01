@@ -12,10 +12,11 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea'; // Import Textarea
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { Trash2, Phone, MapPin, Truck, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Trash2, Phone, MapPin, Truck, AlertCircle, Home } from 'lucide-react';
 
 // Shipping Constants
 const SHIPPING_INSIDE_DHAKA = 60;
@@ -29,6 +30,7 @@ export default function CartPage() {
 
   // State
   const [deliveryLocation, setDeliveryLocation] = useState<'inside' | 'outside'>('inside');
+  const [address, setAddress] = useState(''); // New Address State
   const [manualPhone, setManualPhone] = useState('');
   const [isSavingPhone, setIsSavingPhone] = useState(false);
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
@@ -48,7 +50,6 @@ export default function CartPage() {
   const handleSavePhone = async () => {
     if (!user) return;
     
-    // Basic validation
     if (manualPhone.length < 11) {
       toast({ title: "Invalid Phone", description: "Phone number must be at least 11 digits.", variant: "destructive" });
       return;
@@ -56,7 +57,6 @@ export default function CartPage() {
 
     setIsSavingPhone(true);
     
-    // Directly update the profile table
     const { error } = await supabase
       .from('profiles')
       .update({ phone: manualPhone })
@@ -66,20 +66,29 @@ export default function CartPage() {
       toast({ title: "Error", description: "Failed to save phone number.", variant: "destructive" });
     } else {
       toast({ title: "Success", description: "Phone number saved successfully." });
-      await refreshProfile(); // Refresh context so the "Restrict Order" logic updates
+      await refreshProfile(); 
     }
     setIsSavingPhone(false);
   };
 
-  // --- 2. PLACE ORDER (With Restriction) ---
+  // --- 2. PLACE ORDER (With Phone & Address Restriction) ---
   const handleConfirmOrder = async () => {
     if (!user) return router.push('/login');
     
-    // RESTRICTION CHECK
+    // VALIDATION CHECKS
     if (!profile?.phone) {
       toast({ 
         title: "Phone Required", 
-        description: "Please save your phone number before confirming the order.", 
+        description: "Please save your phone number before confirming.", 
+        variant: "destructive" 
+      });
+      return;
+    }
+
+    if (!address.trim()) {
+      toast({ 
+        title: "Address Required", 
+        description: "Please enter your full delivery address.", 
         variant: "destructive" 
       });
       return;
@@ -93,27 +102,26 @@ export default function CartPage() {
         .from('orders')
         .insert({
           user_id: user.id,
-          total_amount: total,
+          total: total, // Matches your database column name 'total'
           status: 'pending',
           payment_status: 'pending',
-          shipping_address: deliveryLocation === 'inside' ? 'Inside Dhaka' : 'Outside Dhaka',
+          shipping_address: address, // Saving the typed address here
           delivery_location: deliveryLocation,
           shipping_cost: shippingCost,
           payment_method: 'Cash on Delivery',
-          contact_number: profile.phone // Save the confirmed phone number
+          contact_number: profile.phone
         })
         .select()
         .single();
 
       if (orderError) throw orderError;
 
-       // 3. Create Order Items
-        const orderItems = items.map(item => ({
+      // Create Order Items
+      const orderItems = items.map(item => ({
         order_id: order.id,
         product_id: item.product_id,
         quantity: item.quantity,
-        // ✅ FIX: Removed "|| item.product.base_price" to satisfy TypeScript
-        unit_price: item.product.price || 0, 
+        unit_price: item.product.price || 0, // Fixed unit_price issue
         total_price: (item.product.price || 0) * item.quantity
       }));
 
@@ -122,9 +130,7 @@ export default function CartPage() {
 
       // Success
       await clearCart();
-      toast({ title: "Order Confirmed!", description: "We will contact you soon." });
-      
-      // Redirect (to dashboard or home)
+      toast({ title: "Order Confirmed!", description: "We will ship your items soon." });
       router.push('/dashboard'); 
 
     } catch (error: any) {
@@ -151,17 +157,16 @@ export default function CartPage() {
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             
-            {/* LEFT SIDE: Cart Items & Profile Check */}
+            {/* LEFT SIDE: Inputs & Cart Items */}
             <div className="lg:col-span-2 space-y-6">
               
-              {/* Phone Number Requirement Section */}
+              {/* 1. Phone Number Section */}
               <Card className={!profile?.phone ? "border-red-300 bg-red-50" : "border-green-200 bg-green-50"}>
                 <CardContent className="p-6">
                   <div className="flex items-center gap-2 mb-3">
                     <Phone className="h-5 w-5 text-gray-700" />
-                    <h3 className="font-bold text-gray-900">Contact Phone Number (Required)</h3>
+                    <h3 className="font-bold text-gray-900">Contact Phone (Required)</h3>
                   </div>
-                  
                   <div className="flex gap-3">
                     <Input 
                       placeholder="01XXXXXXXXX" 
@@ -177,16 +182,31 @@ export default function CartPage() {
                       {isSavingPhone ? "Saving..." : !profile?.phone ? "Save Number" : "Update"}
                     </Button>
                   </div>
-                  {!profile?.phone && (
-                    <p className="text-red-600 text-sm mt-2 flex items-center">
-                      <AlertCircle className="h-4 w-4 mr-1"/> 
-                      You cannot confirm the order without saving a phone number.
+                </CardContent>
+              </Card>
+
+              {/* 2. Address Section (NEW) */}
+              <Card className={!address.trim() ? "border-red-300" : "border-gray-200"}>
+                <CardContent className="p-6">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Home className="h-5 w-5 text-gray-700" />
+                    <h3 className="font-bold text-gray-900">Delivery Address (Required)</h3>
+                  </div>
+                  <Textarea 
+                    placeholder="House #, Road #, Area, City..." 
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    className="bg-white min-h-[80px]"
+                  />
+                  {!address.trim() && (
+                    <p className="text-xs text-red-500 mt-2">
+                      * Please enter full address to enable order confirmation.
                     </p>
                   )}
                 </CardContent>
               </Card>
 
-              {/* Cart Items List */}
+              {/* 3. Cart Items */}
               <Card>
                 <CardContent className="p-6 divide-y">
                   {items.map((item) => (
@@ -224,7 +244,6 @@ export default function CartPage() {
                 <CardContent className="p-6 space-y-6">
                   <h2 className="text-lg font-bold text-gray-900">Order Summary</h2>
 
-                  {/* 1. Location Selector */}
                   <div className="space-y-3">
                     <Label className="flex items-center gap-2 text-gray-600">
                       <MapPin className="h-4 w-4" /> Shipping Area
@@ -234,15 +253,14 @@ export default function CartPage() {
                       onValueChange={(val: 'inside' | 'outside') => setDeliveryLocation(val)}
                       className="flex flex-col gap-2"
                     >
-                      <div className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition ${deliveryLocation === 'inside' ? 'border-blue-600 bg-blue-50 ring-1 ring-blue-600' : 'hover:bg-gray-50'}`}>
+                      <div className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer ${deliveryLocation === 'inside' ? 'border-blue-600 bg-blue-50 ring-1 ring-blue-600' : ''}`}>
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="inside" id="inside" />
                           <Label htmlFor="inside" className="cursor-pointer">Inside Dhaka</Label>
                         </div>
                         <span className="font-bold text-gray-900">৳{SHIPPING_INSIDE_DHAKA}</span>
                       </div>
-                      
-                      <div className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition ${deliveryLocation === 'outside' ? 'border-blue-600 bg-blue-50 ring-1 ring-blue-600' : 'hover:bg-gray-50'}`}>
+                      <div className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer ${deliveryLocation === 'outside' ? 'border-blue-600 bg-blue-50 ring-1 ring-blue-600' : ''}`}>
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="outside" id="outside" />
                           <Label htmlFor="outside" className="cursor-pointer">Outside Dhaka</Label>
@@ -252,7 +270,6 @@ export default function CartPage() {
                     </RadioGroup>
                   </div>
 
-                  {/* 2. Payment Method (Fixed) */}
                   <div className="space-y-2">
                     <Label className="flex items-center gap-2 text-gray-600">
                       <Truck className="h-4 w-4" /> Payment Method
@@ -264,7 +281,6 @@ export default function CartPage() {
 
                   <Separator />
 
-                  {/* 3. Calculations */}
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
                       <span className="text-gray-600">Subtotal</span>
@@ -281,16 +297,15 @@ export default function CartPage() {
                     </div>
                   </div>
 
-                  {/* 4. Confirm Button */}
                   <Button 
                     className="w-full bg-blue-900 hover:bg-blue-800 h-12 text-lg shadow-md" 
                     onClick={handleConfirmOrder}
-                    disabled={isPlacingOrder || !user || !profile?.phone} // DISABLED IF NO PHONE
+                    // Button disabled if: No User OR No Phone OR No Address
+                    disabled={isPlacingOrder || !user || !profile?.phone || !address.trim()} 
                   >
                     {isPlacingOrder ? 'Processing...' : 'Confirm Order'}
                   </Button>
                   
-                  {/* Login Warning */}
                   {!user && (
                     <p className="text-xs text-center text-red-500">
                       You must <Link href="/login" className="underline font-bold">login</Link> to place an order.
