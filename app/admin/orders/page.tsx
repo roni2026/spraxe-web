@@ -48,13 +48,15 @@ export default function OrdersManagement() {
     fetchOrders();
   }, [user, profile, filter]);
 
-  const fetchOrders = async () => {
+const fetchOrders = async () => {
     setLoading(true);
+    
+    // Updated Query
     let query = supabase
       .from('orders')
       .select(`
         *,
-        profiles:user_id (
+        profiles (
           full_name,
           email
         )
@@ -68,9 +70,10 @@ export default function OrdersManagement() {
     const { data, error } = await query;
 
     if (error) {
+      console.error("Supabase Fetch Error:", error); // Check Console for details
       toast({
         title: 'Error',
-        description: 'Failed to fetch orders',
+        description: `Failed to fetch orders: ${error.message}`,
         variant: 'destructive',
       });
     } else if (data) {
@@ -78,7 +81,7 @@ export default function OrdersManagement() {
     }
     setLoading(false);
   };
-
+  
   const handleStatusChange = async (orderId: string, newStatus: string) => {
     const { error } = await supabase
       .from('orders')
