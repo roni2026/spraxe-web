@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/lib/auth/auth-context';
+import { useCart } from '@/lib/cart/cart-context'; // 1. Added Import
 import { Product, Category } from '@/lib/supabase/types';
 import { Header } from '@/components/layout/header';
 import { Footer } from '@/components/layout/footer';
@@ -13,18 +14,19 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { ShoppingCart, Package } from 'lucide-react';
-import { Dialog, DialogContent } from '@/components/ui/dialog'; // Import Dialog components
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 import {
   Carousel,
   CarouselContent,
   CarouselItem,
   CarouselApi,
-  CarouselNext,     // Import Navigation Buttons
-  CarouselPrevious, // Import Navigation Buttons
+  CarouselNext,
+  CarouselPrevious,
 } from '@/components/ui/carousel';
 
 export default function HomePage() {
   const { user } = useAuth();
+  const { addToCart } = useCart(); // 2. Get addToCart from context
   const router = useRouter();
   const { toast } = useToast();
   
@@ -33,7 +35,7 @@ export default function HomePage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // Carousel states for the Hero section
+  // Carousel states
   const [carouselApi, setCarouselApi] = useState<CarouselApi>();
   const [currentSlide, setCurrentSlide] = useState(0);
   const [featuredImages, setFeaturedImages] = useState<any[]>([]);
@@ -88,35 +90,29 @@ export default function HomePage() {
     });
   }, [carouselApi]);
 
+  // 3. UPDATED: Now supports Guest Cart
   const handleAddToCart = async (productId: string, productName: string) => {
-    if (!user) {
-      router.push('/auth/login');
-      return;
-    }
+    // ❌ Login check REMOVED to allow guests
+    // if (!user) { router.push('/auth/login'); return; }
 
-    const { error } = await supabase
-      .from('cart_items')
-      .upsert({
-        user_id: user.id,
-        product_id: productId,
-        quantity: 1,
+    try {
+      // ✅ Use Context (Handles LocalStorage for guests automatically)
+      await addToCart(productId, 1);
+      
+      toast({
+        title: 'Added to Cart',
+        description: `${productName} added to your cart`,
       });
-
-    if (error) {
+    } catch (error) {
       toast({
         title: 'Error',
         description: 'Failed to add to cart',
         variant: 'destructive',
       });
-    } else {
-      toast({
-        title: 'Added to Cart',
-        description: `${productName} added to your cart`,
-      });
     }
   };
 
-  // Helper component to render a product card to avoid code duplication
+  // Helper component to render a product card
   const ProductCard = ({ product }: { product: Product }) => (
     <Card className="hover:shadow-lg transition group overflow-hidden h-full flex flex-col">
       <CardContent className="p-0 flex flex-col h-full">
@@ -335,7 +331,7 @@ export default function HomePage() {
                </div>
             )}
             
-            {/* Product Details overlay in modal (Optional) */}
+            {/* Product Details overlay in modal */}
             <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-6 text-center">
                <h2 className="text-xl font-bold">{viewingProduct?.name}</h2>
                <p className="text-lg font-semibold text-blue-300">৳{viewingProduct?.price || viewingProduct?.base_price}</p>
