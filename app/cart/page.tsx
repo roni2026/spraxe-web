@@ -92,6 +92,7 @@ export default function CartPage() {
         .insert({
           user_id: user.id,
           total: total,
+          subtotal: subtotal,
           status: 'pending',
           payment_status: 'pending',
           shipping_address: finalAddress, 
