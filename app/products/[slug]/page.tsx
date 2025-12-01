@@ -88,7 +88,10 @@ export default function ProductDetailPage({ params }: { params: { slug: string }
     }
   };
 
-  const handleAddToCart = async () => {
+const handleAddToCart = async () => {
+    // REMOVED THE LOGIN CHECK HERE
+    // The CartContext will handle saving to localStorage automatically!
+    
     if (!product) return;
 
     setAdding(true);
