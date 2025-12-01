@@ -24,7 +24,7 @@ interface Order {
   order_number: string;
   user_id: string;
   status: string;
-  total_amount: number;
+  total: number;
   created_at: string;
   profiles: {
     full_name: string;
@@ -178,7 +178,7 @@ const fetchOrders = async () => {
                         </p>
                       </div>
                       <div className="text-right">
-                        <p className="text-lg font-bold text-blue-900">৳{order.total_amount}</p>
+                        <p className="text-lg font-bold text-blue-900">৳{order.total || order.total_amount}</p>
                         {getStatusBadge(order.status)}
                       </div>
                     </div>
