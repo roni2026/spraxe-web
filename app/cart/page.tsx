@@ -94,6 +94,7 @@ export default function CartPage() {
           total: total,
           subtotal: subtotal,
           tax_amount: 0,
+          discount_amount: 0,
           status: 'pending',
           payment_status: 'pending',
           shipping_address: finalAddress, 
