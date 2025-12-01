@@ -35,7 +35,7 @@ const BD_DISTRICTS: Record<string, string[]> = {
 };
 
 export default function DashboardPage() {
-  const { user, profile, refreshProfile } = useAuth();
+  const { user, profile, refreshProfile, loading: authLoading } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
   
@@ -57,21 +57,22 @@ export default function DashboardPage() {
   const [road, setRoad] = useState('');
   const [zipCode, setZipCode] = useState('');
 
+  // 1. Redirect Check with Auth Loading Wait
   useEffect(() => {
+    if (authLoading) return; // Wait for auth check
     if (!user) {
       router.push('/login');
       return;
     }
     fetchOrders();
-  }, [user]);
+  }, [user, authLoading]);
 
-  // Sync inputs with profile data
+  // 2. Sync inputs with profile data
   useEffect(() => {
     if (profile) {
       if (profile.phone) setPhoneInput(profile.phone);
       
-      // Load structured address fields if they exist
-      // Using 'as any' to bypass TS check until types are regenerated
+      // Load structured address fields
       const p = profile as any;
       if (p.division) setDivision(p.division);
       if (p.district) setDistrict(p.district);
@@ -121,7 +122,7 @@ export default function DashboardPage() {
     
     setIsSaving(true);
     
-    // Create the full formatted string for display/cart
+    // Create formatted address string
     const fullAddress = `${road}, ${city}, ${zipCode ? zipCode + ', ' : ''}${district}, ${division}`;
 
     const updates = {
@@ -130,7 +131,7 @@ export default function DashboardPage() {
       city,
       road,
       zip_code: zipCode,
-      address: fullAddress // We save the formatted string too!
+      address: fullAddress 
     };
     
     const { error } = await supabase
@@ -159,6 +160,15 @@ export default function DashboardPage() {
     };
     return colors[status] || 'bg-gray-100 text-gray-800';
   };
+
+  // Loading State UI
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-900"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
@@ -369,7 +379,7 @@ export default function DashboardPage() {
                          {(profile as any)?.address ? (
                            <div className="space-y-1">
                              <p className="text-gray-900 font-medium whitespace-pre-wrap">{(profile as any).address}</p>
-                             {/* Show individual fields if available just to confirm */}
+                             {/* Show individual fields details if available */}
                              {(profile as any).division && (
                                <p className="text-xs text-gray-500 mt-2 border-t pt-2">
                                  Detailed: {(profile as any).road}, {(profile as any).city}, {(profile as any).district}
