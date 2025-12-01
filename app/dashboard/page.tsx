@@ -158,7 +158,7 @@ export default function DashboardPage() {
                             </div>
                             <div className="text-right flex items-center gap-4 justify-between md:justify-end w-full md:w-auto">
                               <div>
-                                <p className="font-bold text-blue-900 mb-1">৳{order.total_amount}</p>
+                                <p className="font-bold text-blue-900 mb-1">৳{order.total}</p>
                                 <Badge className={getStatusColor(order.status)}>
                                   {order.status}
                                 </Badge>
