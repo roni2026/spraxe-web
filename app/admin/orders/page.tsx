@@ -25,6 +25,7 @@ interface Order {
   user_id: string;
   status: string;
   total: number;
+  total_amount: number;
   created_at: string;
   profiles: {
     full_name: string;
