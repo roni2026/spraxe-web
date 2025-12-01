@@ -115,6 +115,7 @@ export default function CartPage() {
         order_id: order.id,
         product_id: item.product_id,
         product_name: item.product.name,
+        product_sku: (item.product as any).sku || item.product_id,
         quantity: item.quantity,
         unit_price: item.product.price || 0,
         total_price: (item.product.price || 0) * item.quantity
