@@ -62,9 +62,8 @@ export default function HomePage() {
           .from('categories')
           .select('*')
           .eq('is_active', true)
-          //.is('parent_id', null) // Commented out to show all interesting categories, or keep to show only parents
-          .order('sort_order', { ascending: true }) // Ensure specific order
-          .limit(15), // Increased limit for the scroller
+          .order('sort_order', { ascending: true })
+          .limit(15),
         supabase
           .from('featured_images')
           .select('*')
@@ -158,17 +157,17 @@ export default function HomePage() {
     <div className="min-h-screen flex flex-col bg-gray-50">
       <Header />
 
-      {/* Hero Section */}
-      <section className="bg-white pt-6 pb-2">
+      {/* Hero Section - UPDATED HEIGHTS */}
+      <section className="bg-white pt-4 pb-2">
         <div className="w-full max-w-[1800px] mx-auto px-4">
           
-          {/* DESKTOP CAROUSEL */}
+          {/* DESKTOP BANNER (Reduced height to 380px) */}
           <div className="hidden md:block">
              <Carousel className="w-full" opts={{ loop: true }}>
                <CarouselContent>
                  {featuredImages.map((item) => (
                    <CarouselItem key={item.id}>
-                     <div className="relative h-[500px] w-full rounded-2xl overflow-hidden bg-gray-900 group">
+                     <div className="relative h-[380px] w-full rounded-2xl overflow-hidden bg-gray-900 group">
                        <img
                          src={item.image_url}
                          alt={item.title}
@@ -176,10 +175,10 @@ export default function HomePage() {
                        />
                        <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/20 to-transparent flex flex-col justify-center px-16">
                          <div className="max-w-2xl space-y-4 animate-in fade-in slide-in-from-left-8 duration-700">
-                           <h2 className="text-6xl font-extrabold text-white tracking-tight leading-tight">
+                           <h2 className="text-5xl font-extrabold text-white tracking-tight leading-tight">
                              {item.title}
                            </h2>
-                           <p className="text-xl text-gray-100 font-medium leading-relaxed">
+                           <p className="text-lg text-gray-100 font-medium leading-relaxed">
                              {item.description}
                            </p>
                          </div>
@@ -193,35 +192,33 @@ export default function HomePage() {
              </Carousel>
           </div>
 
-          {/* MOBILE CAROUSEL */}
+          {/* MOBILE BANNER (Reduced height to 160px) */}
           <div className="md:hidden">
             <Carousel opts={{ align: "start", loop: true }} className="w-full" setApi={setCarouselApi}>
               <CarouselContent>
                 {featuredImages.map((item) => (
                   <CarouselItem key={item.id}>
-                    <div className="bg-white/10 backdrop-blur-sm rounded-lg overflow-hidden">
-                      <div className="relative aspect-video w-full">
-                        <img
-                          src={item.image_url}
-                          alt={item.title}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                      <div className="p-4">
-                        <h3 className="text-xl font-bold">{item.title}</h3>
-                        <p className="text-sm text-blue-100">{item.description}</p>
+                    <div className="relative h-[160px] w-full rounded-xl overflow-hidden bg-gray-900">
+                      <img
+                        src={item.image_url}
+                        alt={item.title}
+                        className="w-full h-full object-cover opacity-90"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent flex flex-col justify-end p-4">
+                        <h3 className="text-xl font-bold text-white leading-tight">{item.title}</h3>
+                        <p className="text-xs text-gray-200 line-clamp-1">{item.description}</p>
                       </div>
                     </div>
                   </CarouselItem>
                 ))}
               </CarouselContent>
-              <div className="flex justify-center gap-2 mt-4">
+              <div className="flex justify-center gap-1.5 mt-2">
                 {featuredImages.map((_, index) => (
                   <button
                     key={index}
                     onClick={() => carouselApi?.scrollTo(index)}
-                    className={`h-2 rounded-full transition-all ${
-                      currentSlide === index ? 'w-8 bg-blue-900' : 'w-2 bg-gray-300'
+                    className={`h-1.5 rounded-full transition-all ${
+                      currentSlide === index ? 'w-6 bg-blue-900' : 'w-1.5 bg-gray-300'
                     }`}
                     aria-label={`Go to slide ${index + 1}`}
                   />
@@ -232,55 +229,54 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* --- NEW CATEGORY SHOVELER SECTION (Amazon Style) --- */}
-      <section className="bg-white py-6 border-b border-gray-100">
+      {/* --- CATEGORY SECTION (AMAZON STYLE: ROUND & COMPACT) --- */}
+      <section className="bg-white py-4 border-b border-gray-100">
         <div className="w-full max-w-[1800px] mx-auto px-4">
           
-          {/* Section Header */}
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl md:text-2xl font-bold text-gray-900">Shop by Category</h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg md:text-xl font-bold text-gray-900">Shop by Category</h2>
             <Link href="/products" className="text-sm font-medium text-blue-700 hover:text-orange-700 hover:underline flex items-center">
               See all <ChevronRight className="h-4 w-4 ml-0.5" />
             </Link>
           </div>
 
-          {/* Category Carousel */}
           {loading ? (
              <div className="flex gap-4 overflow-hidden">
                {[...Array(6)].map((_, i) => (
-                 <Skeleton key={i} className="h-48 w-40 flex-shrink-0 rounded-lg" />
+                 <Skeleton key={i} className="h-24 w-24 rounded-full flex-shrink-0" />
                ))}
              </div>
           ) : (
             <Carousel 
               opts={{ 
                 align: "start", 
-                dragFree: true // Allows free scrolling like touch
+                dragFree: true 
               }} 
               className="w-full"
             >
-              <CarouselContent className="-ml-4">
+              <CarouselContent className="-ml-3">
                 {categories.map((cat) => (
-                  // Responsive sizing: 2.5 items on mobile, 4 on tablet, 6-7 on desktop
-                  <CarouselItem key={cat.id} className="pl-4 basis-1/3 md:basis-1/5 lg:basis-1/6 xl:basis-[12.5%]">
-                    <Link href={`/products?category=${cat.id}`} className="group block h-full">
-                      <div className="bg-white rounded-lg overflow-hidden h-full flex flex-col">
-                        {/* Image Container */}
-                        <div className="aspect-square bg-gray-50 mb-2 overflow-hidden rounded-md border border-gray-100 relative">
+                  // Sizing: Adjusted for "Round" look. 
+                  // Mobile: 25% width (4 items). Desktop: 10% width (10 items).
+                  <CarouselItem key={cat.id} className="pl-3 basis-[28%] sm:basis-[20%] md:basis-[14%] lg:basis-[10%]">
+                    <Link href={`/products?category=${cat.id}`} className="group block text-center">
+                      <div className="flex flex-col items-center gap-2">
+                        {/* Round Image Container - Amazon Style */}
+                        <div className="w-20 h-20 md:w-24 md:h-24 rounded-full bg-gray-50 border border-gray-100 overflow-hidden relative shadow-sm group-hover:shadow-md transition-all">
                           {cat.image_url ? (
                             <img 
                               src={cat.image_url} 
                               alt={cat.name} 
-                              className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-300" 
+                              className="w-full h-full object-cover object-center group-hover:scale-110 transition-transform duration-300" 
                             />
                           ) : (
-                            <div className="w-full h-full flex items-center justify-center bg-gray-50">
+                            <div className="w-full h-full flex items-center justify-center">
                               <Package className="w-8 h-8 text-gray-300" />
                             </div>
                           )}
                         </div>
                         {/* Category Name */}
-                        <span className="text-sm font-medium text-gray-900 group-hover:text-blue-700 group-hover:underline leading-tight line-clamp-2">
+                        <span className="text-xs md:text-sm font-medium text-gray-900 group-hover:text-blue-700 leading-tight line-clamp-2 px-1">
                           {cat.name}
                         </span>
                       </div>
@@ -288,9 +284,6 @@ export default function HomePage() {
                   </CarouselItem>
                 ))}
               </CarouselContent>
-              {/* Controls - visible on hover on desktop */}
-              <CarouselPrevious className="hidden md:flex -left-4 h-10 w-10 bg-white/90 shadow-md border-gray-200 text-gray-700" />
-              <CarouselNext className="hidden md:flex -right-4 h-10 w-10 bg-white/90 shadow-md border-gray-200 text-gray-700" />
             </Carousel>
           )}
         </div>
