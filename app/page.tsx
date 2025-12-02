@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import { ShoppingCart, Package } from 'lucide-react';
+import { ShoppingCart, Package, ChevronRight } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import {
   Carousel,
@@ -62,9 +62,9 @@ export default function HomePage() {
           .from('categories')
           .select('*')
           .eq('is_active', true)
-          .is('parent_id', null)
-          .order('sort_order')
-          .limit(6),
+          //.is('parent_id', null) // Commented out to show all interesting categories, or keep to show only parents
+          .order('sort_order', { ascending: true }) // Ensure specific order
+          .limit(15), // Increased limit for the scroller
         supabase
           .from('featured_images')
           .select('*')
@@ -158,24 +158,22 @@ export default function HomePage() {
     <div className="min-h-screen flex flex-col bg-gray-50">
       <Header />
 
-      {/* Hero Section (BANNER STYLE) */}
-      <section className="bg-white py-6">
+      {/* Hero Section */}
+      <section className="bg-white pt-6 pb-2">
         <div className="w-full max-w-[1800px] mx-auto px-4">
           
-          {/* DESKTOP BANNER CAROUSEL */}
+          {/* DESKTOP CAROUSEL */}
           <div className="hidden md:block">
              <Carousel className="w-full" opts={{ loop: true }}>
                <CarouselContent>
                  {featuredImages.map((item) => (
                    <CarouselItem key={item.id}>
-                     {/* Banner Height Fixed to 500px for cinematic look */}
                      <div className="relative h-[500px] w-full rounded-2xl overflow-hidden bg-gray-900 group">
                        <img
                          src={item.image_url}
                          alt={item.title}
                          className="w-full h-full object-cover opacity-90 transition-transform duration-700 group-hover:scale-105"
                        />
-                       {/* Banner Text Overlay */}
                        <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/20 to-transparent flex flex-col justify-center px-16">
                          <div className="max-w-2xl space-y-4 animate-in fade-in slide-in-from-left-8 duration-700">
                            <h2 className="text-6xl font-extrabold text-white tracking-tight leading-tight">
@@ -184,8 +182,6 @@ export default function HomePage() {
                            <p className="text-xl text-gray-100 font-medium leading-relaxed">
                              {item.description}
                            </p>
-                           {/* Optional Call to Action Button if you want one */}
-                           {/* <Button size="lg" className="bg-white text-black hover:bg-gray-100 mt-4">Shop Now</Button> */}
                          </div>
                        </div>
                      </div>
@@ -197,21 +193,23 @@ export default function HomePage() {
              </Carousel>
           </div>
 
-          {/* MOBILE BANNER CAROUSEL */}
+          {/* MOBILE CAROUSEL */}
           <div className="md:hidden">
             <Carousel opts={{ align: "start", loop: true }} className="w-full" setApi={setCarouselApi}>
               <CarouselContent>
                 {featuredImages.map((item) => (
                   <CarouselItem key={item.id}>
-                    <div className="relative h-[250px] w-full rounded-xl overflow-hidden bg-gray-900">
-                      <img
-                        src={item.image_url}
-                        alt={item.title}
-                        className="w-full h-full object-cover opacity-90"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent flex flex-col justify-end p-6">
-                        <h3 className="text-2xl font-bold text-white">{item.title}</h3>
-                        <p className="text-sm text-gray-200 line-clamp-2">{item.description}</p>
+                    <div className="bg-white/10 backdrop-blur-sm rounded-lg overflow-hidden">
+                      <div className="relative aspect-video w-full">
+                        <img
+                          src={item.image_url}
+                          alt={item.title}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <div className="p-4">
+                        <h3 className="text-xl font-bold">{item.title}</h3>
+                        <p className="text-sm text-blue-100">{item.description}</p>
                       </div>
                     </div>
                   </CarouselItem>
@@ -234,8 +232,72 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* --- NEW CATEGORY SHOVELER SECTION (Amazon Style) --- */}
+      <section className="bg-white py-6 border-b border-gray-100">
+        <div className="w-full max-w-[1800px] mx-auto px-4">
+          
+          {/* Section Header */}
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl md:text-2xl font-bold text-gray-900">Shop by Category</h2>
+            <Link href="/products" className="text-sm font-medium text-blue-700 hover:text-orange-700 hover:underline flex items-center">
+              See all <ChevronRight className="h-4 w-4 ml-0.5" />
+            </Link>
+          </div>
+
+          {/* Category Carousel */}
+          {loading ? (
+             <div className="flex gap-4 overflow-hidden">
+               {[...Array(6)].map((_, i) => (
+                 <Skeleton key={i} className="h-48 w-40 flex-shrink-0 rounded-lg" />
+               ))}
+             </div>
+          ) : (
+            <Carousel 
+              opts={{ 
+                align: "start", 
+                dragFree: true // Allows free scrolling like touch
+              }} 
+              className="w-full"
+            >
+              <CarouselContent className="-ml-4">
+                {categories.map((cat) => (
+                  // Responsive sizing: 2.5 items on mobile, 4 on tablet, 6-7 on desktop
+                  <CarouselItem key={cat.id} className="pl-4 basis-1/3 md:basis-1/5 lg:basis-1/6 xl:basis-[12.5%]">
+                    <Link href={`/products?category=${cat.id}`} className="group block h-full">
+                      <div className="bg-white rounded-lg overflow-hidden h-full flex flex-col">
+                        {/* Image Container */}
+                        <div className="aspect-square bg-gray-50 mb-2 overflow-hidden rounded-md border border-gray-100 relative">
+                          {cat.image_url ? (
+                            <img 
+                              src={cat.image_url} 
+                              alt={cat.name} 
+                              className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-300" 
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center bg-gray-50">
+                              <Package className="w-8 h-8 text-gray-300" />
+                            </div>
+                          )}
+                        </div>
+                        {/* Category Name */}
+                        <span className="text-sm font-medium text-gray-900 group-hover:text-blue-700 group-hover:underline leading-tight line-clamp-2">
+                          {cat.name}
+                        </span>
+                      </div>
+                    </Link>
+                  </CarouselItem>
+                ))}
+              </CarouselContent>
+              {/* Controls - visible on hover on desktop */}
+              <CarouselPrevious className="hidden md:flex -left-4 h-10 w-10 bg-white/90 shadow-md border-gray-200 text-gray-700" />
+              <CarouselNext className="hidden md:flex -right-4 h-10 w-10 bg-white/90 shadow-md border-gray-200 text-gray-700" />
+            </Carousel>
+          )}
+        </div>
+      </section>
+
       {/* Best Sellers Section */}
-      <section className="py-8 bg-white">
+      <section className="py-8 bg-gray-50">
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between mb-6">
             <div>
@@ -275,7 +337,7 @@ export default function HomePage() {
       </section>
 
       {/* Featured Products Section */}
-      <section className="py-8 bg-gray-50">
+      <section className="py-8 bg-white">
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between mb-6">
             <div>
