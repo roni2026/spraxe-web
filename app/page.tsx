@@ -93,7 +93,6 @@ export default function HomePage() {
   const handleAddToCart = async (productId: string, productName: string) => {
     try {
       await addToCart(productId, 1);
-      
       toast({
         title: 'Added to Cart',
         description: `${productName} added to your cart`,
@@ -161,47 +160,50 @@ export default function HomePage() {
 
       {/* Hero Section */}
       <section className="bg-gradient-to-br from-blue-900 to-blue-700 text-white py-8">
-        <div className="container mx-auto px-4">
+        {/* CHANGED: Removed 'container' to allow wider width, added explicit max-width and px-4 (~0.5 inch padding) */}
+        <div className="w-full max-w-[1800px] mx-auto px-4">
           
-          {/* DESKTOP CAROUSEL (Now a single slide carousel) */}
+          {/* DESKTOP CAROUSEL */}
           <div className="hidden md:block">
-             <Carousel className="w-full max-w-5xl mx-auto" opts={{ loop: true }}>
+             <Carousel className="w-full" opts={{ loop: true }}>
                <CarouselContent>
                  {featuredImages.map((item) => (
                    <CarouselItem key={item.id}>
-                     <div className="relative h-[400px] w-full rounded-xl overflow-hidden bg-black/20 group">
+                     {/* CHANGED: aspect-[21/9] for wide landscape, removed fixed height */}
+                     <div className="relative aspect-[21/9] w-full rounded-xl overflow-hidden bg-black/20 group">
                        <img
                          src={item.image_url}
                          alt={item.title}
                          className="w-full h-full object-cover"
                        />
-                       {/* Overlay with Text */}
-                       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex flex-col justify-end p-8">
-                         <h2 className="text-4xl font-bold mb-2">{item.title}</h2>
-                         <p className="text-lg text-blue-100 max-w-2xl">{item.description}</p>
+                       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex flex-col justify-end p-12">
+                         <h2 className="text-5xl font-bold mb-4">{item.title}</h2>
+                         <p className="text-xl text-blue-100 max-w-3xl">{item.description}</p>
                        </div>
                      </div>
                    </CarouselItem>
                  ))}
                </CarouselContent>
-               {/* Desktop Navigation Buttons */}
-               <CarouselPrevious className="left-4 bg-white/20 hover:bg-white/40 border-none text-white h-12 w-12" />
-               <CarouselNext className="right-4 bg-white/20 hover:bg-white/40 border-none text-white h-12 w-12" />
+               <CarouselPrevious className="left-8 bg-white/20 hover:bg-white/40 border-none text-white h-14 w-14" />
+               <CarouselNext className="right-8 bg-white/20 hover:bg-white/40 border-none text-white h-14 w-14" />
              </Carousel>
           </div>
 
-          {/* MOBILE CAROUSEL (Unchanged) */}
+          {/* MOBILE CAROUSEL */}
           <div className="md:hidden">
             <Carousel opts={{ align: "start", loop: true }} className="w-full" setApi={setCarouselApi}>
               <CarouselContent>
                 {featuredImages.map((item) => (
                   <CarouselItem key={item.id}>
                     <div className="bg-white/10 backdrop-blur-sm rounded-lg overflow-hidden">
-                      <img
-                        src={item.image_url}
-                        alt={item.title}
-                        className="w-full h-48 object-cover"
-                      />
+                      {/* CHANGED: aspect-video (16:9) for landscape on mobile instead of h-48 */}
+                      <div className="relative aspect-video w-full">
+                        <img
+                          src={item.image_url}
+                          alt={item.title}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
                       <div className="p-4">
                         <h3 className="text-xl font-bold">{item.title}</h3>
                         <p className="text-sm text-blue-100">{item.description}</p>
