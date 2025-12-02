@@ -12,21 +12,6 @@ interface CategorySidebarProps {
   onClose: () => void;
 }
 
-// ✅ 1. Define your specific order here
-// Note: These names must match your Database "name" column EXACTLY.
-const CATEGORY_ORDER = [
-  "Women's Fashion",
-  "Men's Fashion",
-  "Gadgets",
-  "Watches",
-  "Headphone",
-  "Laptop & Computer Accessories",
-  "CCTV Camera",
-  "Home Appliances",
-  "Home Electronics",
-  "Home Decor & Textile"
-];
-
 export function CategorySidebar({ isOpen, onClose }: CategorySidebarProps) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -59,30 +44,11 @@ export function CategorySidebar({ isOpen, onClose }: CategorySidebarProps) {
     const { data } = await supabase
       .from('categories')
       .select('*')
-      .eq('is_active', true);
-      // We removed .order('name') because we will sort manually below
+      .eq('is_active', true)
+      // ✅ SORT BY DATABASE COLUMN 'sort_order'
+      .order('sort_order', { ascending: true });
 
-    if (data) {
-      // ✅ 2. Custom Sorting Logic
-      const sortedData = data.sort((a, b) => {
-        const indexA = CATEGORY_ORDER.indexOf(a.name);
-        const indexB = CATEGORY_ORDER.indexOf(b.name);
-
-        // If both are in the list, sort by the specific order
-        if (indexA !== -1 && indexB !== -1) return indexA - indexB;
-        
-        // If only A is in the list, put A first
-        if (indexA !== -1) return -1;
-        
-        // If only B is in the list, put B first
-        if (indexB !== -1) return 1;
-        
-        // If neither are in the list, sort alphabetically at the bottom
-        return a.name.localeCompare(b.name);
-      });
-
-      setCategories(sortedData);
-    }
+    if (data) setCategories(data);
     setLoading(false);
   };
 
