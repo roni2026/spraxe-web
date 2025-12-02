@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation'; // Added this import
+import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import { Product, Category } from '@/lib/supabase/types';
 import { useCart } from '@/lib/cart/cart-context';
@@ -13,23 +13,21 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'; // Import Sheet
 import { useToast } from '@/hooks/use-toast';
-import { ShoppingCart, Package, Search, ChevronDown, ChevronRight, ChevronLeft } from 'lucide-react';
+import { ShoppingCart, Package, Search, ChevronDown, ChevronRight, ChevronLeft, Filter } from 'lucide-react';
 
 const PRODUCTS_PER_PAGE = 12;
 
 export default function ProductsPage() {
   const searchParams = useSearchParams();
-  const categoryParam = searchParams.get('category'); // Read URL param
+  const categoryParam = searchParams.get('category');
 
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [search, setSearch] = useState('');
   
-  // Initialize with URL param if present
   const [selectedCategory, setSelectedCategory] = useState<string | null>(categoryParam);
-  
-  // Accordion State (Single string for one open item)
   const [expandedFilter, setExpandedFilter] = useState<string | null>(null);
   
   const [currentPage, setCurrentPage] = useState(1);
@@ -41,12 +39,9 @@ export default function ProductsPage() {
   const { addToCart } = useCart();
   const { toast } = useToast();
 
-  // 1. Listen for URL changes (Navigation from Sidebar)
   useEffect(() => {
     if (categoryParam) {
       setSelectedCategory(categoryParam);
-      // Optional: Auto-expand the parent if a child is selected via URL
-      // (This requires knowing the parent of the selected category, which we can look up after categories load)
     }
   }, [categoryParam]);
 
@@ -59,8 +54,6 @@ export default function ProductsPage() {
     fetchProducts(1); 
   }, [selectedCategory, priceRange, search]);
 
-  // If we just loaded categories and have a selected category from URL, 
-  // let's try to find its parent to auto-expand the menu
   useEffect(() => {
     if (categories.length > 0 && selectedCategory) {
       const current = categories.find(c => c.id === selectedCategory);
@@ -83,7 +76,7 @@ export default function ProductsPage() {
       .from('categories')
       .select('*')
       .eq('is_active', true)
-      .order('name');
+      .order('sort_order', { ascending: true }); // Ensure correct order
 
     if (data) setCategories(data);
   };
@@ -130,11 +123,9 @@ export default function ProductsPage() {
   };
 
   const handleCategoryClick = (categoryId: string) => {
-    // If clicking the currently selected one, deselect it. Else select new.
     const newCategory = selectedCategory === categoryId ? null : categoryId;
     setSelectedCategory(newCategory);
     
-    // Update URL without reloading page (Optional but good for UX)
     const url = new URL(window.location.href);
     if (newCategory) {
       url.searchParams.set('category', newCategory);
@@ -154,7 +145,6 @@ export default function ProductsPage() {
     setPriceRange('all');
     setSearch('');
     
-    // Clear URL param
     const url = new URL(window.location.href);
     url.searchParams.delete('category');
     window.history.pushState({}, '', url);
@@ -182,141 +172,177 @@ export default function ProductsPage() {
   const mainCategories = categories.filter(c => !c.parent_id);
   const totalPages = Math.ceil(totalProducts / PRODUCTS_PER_PAGE);
 
+  // Reusable Filter Content Component
+  const FilterContent = () => (
+    <Card className="border-none shadow-none md:border md:shadow-sm">
+      <CardContent className="p-0 md:p-4">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-bold text-base text-gray-900">Filters</h3>
+          {(selectedCategory || priceRange !== 'all' || search) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={clearFilters}
+              className="text-xs text-blue-900 hover:text-blue-800 h-7"
+            >
+              Clear
+            </Button>
+          )}
+        </div>
+
+        {/* Search is handled in main header for mobile, but kept here for desktop */}
+        <div className="relative mb-4 hidden md:block">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+          <Input
+            placeholder="Search..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-10 h-9 text-sm"
+          />
+        </div>
+
+        <Separator className="my-4 hidden md:block" />
+
+        <div>
+          <h4 className="font-semibold text-sm text-gray-900 mb-3">Categories</h4>
+          <ScrollArea className="h-[60vh] md:h-96">
+            <div className="space-y-1 pr-3">
+              {mainCategories.map((parent) => {
+                const subcategories = categories.filter(c => c.parent_id === parent.id);
+                const hasSubs = subcategories.length > 0;
+                const isExpanded = expandedFilter === parent.id;
+                const isSelected = selectedCategory === parent.id;
+
+                return (
+                  <div key={parent.id} className="select-none">
+                    <div className="flex items-center justify-between py-1 group">
+                      <button
+                        onClick={() => {
+                          handleCategoryClick(parent.id);
+                          setExpandedFilter(parent.id);
+                        }}
+                        className={`text-sm text-left flex-1 transition-colors ${
+                          isSelected ? 'font-bold text-blue-900' : 'text-gray-700 hover:text-blue-900'
+                        }`}
+                      >
+                        {parent.name}
+                      </button>
+                      
+                      {hasSubs && (
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleFilterExpand(parent.id);
+                          }}
+                          className="p-1 text-gray-400 hover:text-gray-600"
+                        >
+                          {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        </button>
+                      )}
+                    </div>
+
+                    {hasSubs && isExpanded && (
+                      <div className="ml-2 pl-2 border-l-2 border-gray-100 space-y-1 mt-1">
+                        {subcategories.map(child => {
+                          const isChildSelected = selectedCategory === child.id;
+                          return (
+                            <button
+                              key={child.id}
+                              onClick={() => handleCategoryClick(child.id)}
+                              className={`block w-full text-left text-xs py-1 transition-colors ${
+                                isChildSelected ? 'font-bold text-blue-900' : 'text-gray-600 hover:text-blue-900'
+                              }`}
+                            >
+                              {child.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </ScrollArea>
+        </div>
+
+        <Separator className="my-4" />
+
+        <div>
+          <h4 className="font-semibold text-sm text-gray-900 mb-3">Price Range</h4>
+          <div className="space-y-1">
+            {[
+              { value: 'all', label: 'All Prices' },
+              { value: 'under-500', label: 'Under ৳500' },
+              { value: '500-1000', label: '৳500 - ৳1,000' },
+              { value: '1000-2000', label: '৳1,000 - ৳2,000' },
+              { value: 'over-2000', label: 'Over ৳2,000' },
+            ].map((option) => (
+              <button
+                key={option.value}
+                onClick={() => setPriceRange(option.value)}
+                className={`block w-full text-left text-sm py-1 ${
+                  priceRange === option.value ? 'font-bold text-blue-900' : 'text-gray-700 hover:text-blue-900'
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
       <Header />
 
       <div className="container mx-auto px-4 py-6 flex-1">
+        
+        {/* MOBILE FILTER BAR (Visible only on small screens) */}
+        <div className="md:hidden mb-6 flex gap-3 sticky top-[72px] z-30 bg-gray-50 pb-2">
+           <Sheet>
+             <SheetTrigger asChild>
+               <Button variant="outline" className="gap-2 bg-white flex-shrink-0">
+                 <Filter className="h-4 w-4" /> Filters
+               </Button>
+             </SheetTrigger>
+             <SheetContent side="left" className="w-[300px] sm:w-[400px] overflow-y-auto">
+               <div className="mt-4">
+                 <FilterContent />
+               </div>
+             </SheetContent>
+           </Sheet>
+           
+           <div className="relative flex-1">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="Search products..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-10 h-10 text-sm bg-white"
+              />
+           </div>
+        </div>
+
         <div className="flex flex-col md:flex-row gap-6">
           
-          <aside className="w-full md:w-64 flex-shrink-0">
-            <div className="sticky top-20 space-y-4">
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-bold text-base text-gray-900">Filters</h3>
-                    {(selectedCategory || priceRange !== 'all' || search) && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={clearFilters}
-                        className="text-xs text-blue-900 hover:text-blue-800 h-7"
-                      >
-                        Clear
-                      </Button>
-                    )}
-                  </div>
-
-                  <div className="relative mb-4">
-                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-                    <Input
-                      placeholder="Search..."
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                      className="pl-10 h-9 text-sm"
-                    />
-                  </div>
-
-                  <Separator className="my-4" />
-
-                  <div>
-                    <h4 className="font-semibold text-sm text-gray-900 mb-3">Categories</h4>
-                    <ScrollArea className="h-96">
-                      <div className="space-y-1 pr-3">
-                        {mainCategories.map((parent) => {
-                          const subcategories = categories.filter(c => c.parent_id === parent.id);
-                          const hasSubs = subcategories.length > 0;
-                          const isExpanded = expandedFilter === parent.id;
-                          const isSelected = selectedCategory === parent.id;
-
-                          return (
-                            <div key={parent.id} className="select-none">
-                              <div className="flex items-center justify-between py-1 group">
-                                <button
-                                  onClick={() => {
-                                    handleCategoryClick(parent.id);
-                                    setExpandedFilter(parent.id);
-                                  }}
-                                  className={`text-sm text-left flex-1 transition-colors ${
-                                    isSelected ? 'font-bold text-blue-900' : 'text-gray-700 hover:text-blue-900'
-                                  }`}
-                                >
-                                  {parent.name}
-                                </button>
-                                
-                                {hasSubs && (
-                                  <button 
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      toggleFilterExpand(parent.id);
-                                    }}
-                                    className="p-1 text-gray-400 hover:text-gray-600"
-                                  >
-                                    {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                                  </button>
-                                )}
-                              </div>
-
-                              {hasSubs && isExpanded && (
-                                <div className="ml-2 pl-2 border-l-2 border-gray-100 space-y-1 mt-1">
-                                  {subcategories.map(child => {
-                                    const isChildSelected = selectedCategory === child.id;
-                                    return (
-                                      <button
-                                        key={child.id}
-                                        onClick={() => handleCategoryClick(child.id)}
-                                        className={`block w-full text-left text-xs py-1 transition-colors ${
-                                          isChildSelected ? 'font-bold text-blue-900' : 'text-gray-600 hover:text-blue-900'
-                                        }`}
-                                      >
-                                        {child.name}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </ScrollArea>
-                  </div>
-
-                  <Separator className="my-4" />
-
-                  <div>
-                    <h4 className="font-semibold text-sm text-gray-900 mb-3">Price Range</h4>
-                    <div className="space-y-1">
-                      {[
-                        { value: 'all', label: 'All Prices' },
-                        { value: 'under-500', label: 'Under ৳500' },
-                        { value: '500-1000', label: '৳500 - ৳1,000' },
-                        { value: '1000-2000', label: '৳1,000 - ৳2,000' },
-                        { value: 'over-2000', label: 'Over ৳2,000' },
-                      ].map((option) => (
-                        <button
-                          key={option.value}
-                          onClick={() => setPriceRange(option.value)}
-                          className={`block w-full text-left text-sm py-1 ${
-                            priceRange === option.value ? 'font-bold text-blue-900' : 'text-gray-700 hover:text-blue-900'
-                          }`}
-                        >
-                          {option.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+          {/* DESKTOP SIDEBAR (Hidden on mobile) */}
+          <aside className="hidden md:block w-64 flex-shrink-0">
+            <div className="sticky top-24">
+              <FilterContent />
             </div>
           </aside>
 
           <div className="flex-1 min-w-0 flex flex-col">
-            <div className="mb-4">
-              <h1 className="text-2xl font-bold text-gray-900 mb-1">All Products</h1>
-              <p className="text-sm text-gray-600">
-                Showing {products.length} of {totalProducts} products
-              </p>
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900 mb-1">All Products</h1>
+                <p className="text-sm text-gray-600">
+                  Showing {products.length} of {totalProducts} products
+                </p>
+              </div>
             </div>
 
             {loading ? (
