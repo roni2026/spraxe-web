@@ -158,55 +158,60 @@ export default function HomePage() {
     <div className="min-h-screen flex flex-col bg-gray-50">
       <Header />
 
-      {/* Hero Section */}
-      <section className="bg-gradient-to-br from-blue-900 to-blue-700 text-white py-8">
-        {/* CHANGED: Removed 'container' to allow wider width, added explicit max-width and px-4 (~0.5 inch padding) */}
+      {/* Hero Section (BANNER STYLE) */}
+      <section className="bg-white py-6">
         <div className="w-full max-w-[1800px] mx-auto px-4">
           
-          {/* DESKTOP CAROUSEL */}
+          {/* DESKTOP BANNER CAROUSEL */}
           <div className="hidden md:block">
              <Carousel className="w-full" opts={{ loop: true }}>
                <CarouselContent>
                  {featuredImages.map((item) => (
                    <CarouselItem key={item.id}>
-                     {/* CHANGED: aspect-[21/9] for wide landscape, removed fixed height */}
-                     <div className="relative aspect-[21/9] w-full rounded-xl overflow-hidden bg-black/20 group">
+                     {/* Banner Height Fixed to 500px for cinematic look */}
+                     <div className="relative h-[500px] w-full rounded-2xl overflow-hidden bg-gray-900 group">
                        <img
                          src={item.image_url}
                          alt={item.title}
-                         className="w-full h-full object-cover"
+                         className="w-full h-full object-cover opacity-90 transition-transform duration-700 group-hover:scale-105"
                        />
-                       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex flex-col justify-end p-12">
-                         <h2 className="text-5xl font-bold mb-4">{item.title}</h2>
-                         <p className="text-xl text-blue-100 max-w-3xl">{item.description}</p>
+                       {/* Banner Text Overlay */}
+                       <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/20 to-transparent flex flex-col justify-center px-16">
+                         <div className="max-w-2xl space-y-4 animate-in fade-in slide-in-from-left-8 duration-700">
+                           <h2 className="text-6xl font-extrabold text-white tracking-tight leading-tight">
+                             {item.title}
+                           </h2>
+                           <p className="text-xl text-gray-100 font-medium leading-relaxed">
+                             {item.description}
+                           </p>
+                           {/* Optional Call to Action Button if you want one */}
+                           {/* <Button size="lg" className="bg-white text-black hover:bg-gray-100 mt-4">Shop Now</Button> */}
+                         </div>
                        </div>
                      </div>
                    </CarouselItem>
                  ))}
                </CarouselContent>
-               <CarouselPrevious className="left-8 bg-white/20 hover:bg-white/40 border-none text-white h-14 w-14" />
-               <CarouselNext className="right-8 bg-white/20 hover:bg-white/40 border-none text-white h-14 w-14" />
+               <CarouselPrevious className="left-8 bg-white/10 hover:bg-white/30 border-none text-white h-12 w-12 backdrop-blur-md" />
+               <CarouselNext className="right-8 bg-white/10 hover:bg-white/30 border-none text-white h-12 w-12 backdrop-blur-md" />
              </Carousel>
           </div>
 
-          {/* MOBILE CAROUSEL */}
+          {/* MOBILE BANNER CAROUSEL */}
           <div className="md:hidden">
             <Carousel opts={{ align: "start", loop: true }} className="w-full" setApi={setCarouselApi}>
               <CarouselContent>
                 {featuredImages.map((item) => (
                   <CarouselItem key={item.id}>
-                    <div className="bg-white/10 backdrop-blur-sm rounded-lg overflow-hidden">
-                      {/* CHANGED: aspect-video (16:9) for landscape on mobile instead of h-48 */}
-                      <div className="relative aspect-video w-full">
-                        <img
-                          src={item.image_url}
-                          alt={item.title}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                      <div className="p-4">
-                        <h3 className="text-xl font-bold">{item.title}</h3>
-                        <p className="text-sm text-blue-100">{item.description}</p>
+                    <div className="relative h-[250px] w-full rounded-xl overflow-hidden bg-gray-900">
+                      <img
+                        src={item.image_url}
+                        alt={item.title}
+                        className="w-full h-full object-cover opacity-90"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent flex flex-col justify-end p-6">
+                        <h3 className="text-2xl font-bold text-white">{item.title}</h3>
+                        <p className="text-sm text-gray-200 line-clamp-2">{item.description}</p>
                       </div>
                     </div>
                   </CarouselItem>
@@ -218,7 +223,7 @@ export default function HomePage() {
                     key={index}
                     onClick={() => carouselApi?.scrollTo(index)}
                     className={`h-2 rounded-full transition-all ${
-                      currentSlide === index ? 'w-8 bg-white' : 'w-2 bg-white/50'
+                      currentSlide === index ? 'w-8 bg-blue-900' : 'w-2 bg-gray-300'
                     }`}
                     aria-label={`Go to slide ${index + 1}`}
                   />
