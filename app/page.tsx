@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/lib/auth/auth-context';
-import { useCart } from '@/lib/cart/cart-context'; // 1. Added Import
+import { useCart } from '@/lib/cart/cart-context';
 import { Product, Category } from '@/lib/supabase/types';
 import { Header } from '@/components/layout/header';
 import { Footer } from '@/components/layout/footer';
@@ -26,7 +26,7 @@ import {
 
 export default function HomePage() {
   const { user } = useAuth();
-  const { addToCart } = useCart(); // 2. Get addToCart from context
+  const { addToCart } = useCart();
   const router = useRouter();
   const { toast } = useToast();
   
@@ -90,13 +90,8 @@ export default function HomePage() {
     });
   }, [carouselApi]);
 
-  // 3. UPDATED: Now supports Guest Cart
   const handleAddToCart = async (productId: string, productName: string) => {
-    // ❌ Login check REMOVED to allow guests
-    // if (!user) { router.push('/auth/login'); return; }
-
     try {
-      // ✅ Use Context (Handles LocalStorage for guests automatically)
       await addToCart(productId, 1);
       
       toast({
@@ -112,11 +107,9 @@ export default function HomePage() {
     }
   };
 
-  // Helper component to render a product card
   const ProductCard = ({ product }: { product: Product }) => (
     <Card className="hover:shadow-lg transition group overflow-hidden h-full flex flex-col">
       <CardContent className="p-0 flex flex-col h-full">
-        {/* IMAGE CLICKABLE AREA - OPENS MODAL */}
         <div 
           className="aspect-square bg-gray-100 overflow-hidden relative cursor-zoom-in"
           onClick={() => setViewingProduct(product)}
@@ -135,7 +128,6 @@ export default function HomePage() {
         </div>
 
         <div className="p-3 space-y-2 flex flex-col flex-1">
-          {/* TITLE CLICKABLE AREA - GOES TO PAGE */}
           <Link href={`/products/${product.slug}`} className="block">
             <h3 className="text-sm font-medium text-gray-900 line-clamp-2 min-h-[2.5rem] hover:text-blue-900 hover:underline transition">
               {product.name}
@@ -148,7 +140,7 @@ export default function HomePage() {
             </p>
             <Button
               onClick={(e) => {
-                e.stopPropagation(); // Prevent triggering other clicks
+                e.stopPropagation();
                 handleAddToCart(product.id, product.name);
               }}
               className="w-full bg-blue-900 hover:bg-blue-800 h-9"
@@ -170,24 +162,37 @@ export default function HomePage() {
       {/* Hero Section */}
       <section className="bg-gradient-to-br from-blue-900 to-blue-700 text-white py-8">
         <div className="container mx-auto px-4">
-          <div className="hidden md:grid md:grid-cols-3 gap-4">
-            {featuredImages.map((item) => (
-              <div key={item.id} className="bg-white/10 backdrop-blur-sm rounded-lg overflow-hidden hover:bg-white/20 transition cursor-pointer">
-                <img
-                  src={item.image_url}
-                  alt={item.title}
-                  className="w-full h-32 object-cover"
-                />
-                <div className="p-3">
-                  <h3 className="text-lg font-bold">{item.title}</h3>
-                  <p className="text-sm text-blue-100">{item.description}</p>
-                </div>
-              </div>
-            ))}
+          
+          {/* DESKTOP CAROUSEL (Now a single slide carousel) */}
+          <div className="hidden md:block">
+             <Carousel className="w-full max-w-5xl mx-auto" opts={{ loop: true }}>
+               <CarouselContent>
+                 {featuredImages.map((item) => (
+                   <CarouselItem key={item.id}>
+                     <div className="relative h-[400px] w-full rounded-xl overflow-hidden bg-black/20 group">
+                       <img
+                         src={item.image_url}
+                         alt={item.title}
+                         className="w-full h-full object-cover"
+                       />
+                       {/* Overlay with Text */}
+                       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex flex-col justify-end p-8">
+                         <h2 className="text-4xl font-bold mb-2">{item.title}</h2>
+                         <p className="text-lg text-blue-100 max-w-2xl">{item.description}</p>
+                       </div>
+                     </div>
+                   </CarouselItem>
+                 ))}
+               </CarouselContent>
+               {/* Desktop Navigation Buttons */}
+               <CarouselPrevious className="left-4 bg-white/20 hover:bg-white/40 border-none text-white h-12 w-12" />
+               <CarouselNext className="right-4 bg-white/20 hover:bg-white/40 border-none text-white h-12 w-12" />
+             </Carousel>
           </div>
 
+          {/* MOBILE CAROUSEL (Unchanged) */}
           <div className="md:hidden">
-            <Carousel opts={{ align: "start" }} className="w-full" setApi={setCarouselApi}>
+            <Carousel opts={{ align: "start", loop: true }} className="w-full" setApi={setCarouselApi}>
               <CarouselContent>
                 {featuredImages.map((item) => (
                   <CarouselItem key={item.id}>
@@ -331,7 +336,6 @@ export default function HomePage() {
                </div>
             )}
             
-            {/* Product Details overlay in modal */}
             <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-6 text-center">
                <h2 className="text-xl font-bold">{viewingProduct?.name}</h2>
                <p className="text-lg font-semibold text-blue-300">৳{viewingProduct?.price || viewingProduct?.base_price}</p>
