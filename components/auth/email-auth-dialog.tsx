@@ -102,8 +102,8 @@ export function EmailAuthDialog({ open, onOpenChange }: EmailAuthDialogProps) {
       return;
     }
 
-    if (signUpPassword.length < 6) {
-      toast({ title: 'Weak Password', description: 'Password must be at least 6 characters', variant: 'destructive' });
+    if (signUpPassword.length < 8) {
+      toast({ title: 'Weak Password', description: 'Password must be at least 8 characters', variant: 'destructive' });
       return;
     }
 
