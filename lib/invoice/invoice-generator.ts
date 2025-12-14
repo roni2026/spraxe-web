@@ -22,13 +22,13 @@ export interface InvoiceData {
   notes: string;
 }
 
-// Helper: Safety check for numbers
+// Safety helper to prevent "NaN" errors
 const safeNum = (value: any): number => {
   const num = Number(value);
   return isNaN(num) ? 0 : num;
 };
 
-// Helper: Currency formatting (e.g. 1,200.00)
+// Currency formatter
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-BD', {
     minimumFractionDigits: 2,
@@ -37,7 +37,7 @@ const formatCurrency = (amount: number) => {
 };
 
 export async function getInvoiceData(orderId: string): Promise<InvoiceData | null> {
-  // 1. Fetch Order Data (This is where your Money & Contact info lives)
+  // 1. Fetch Order Data (This is the source of truth for Money & Contact)
   const { data: order, error: orderError } = await supabase
     .from('orders')
     .select(`
@@ -56,32 +56,26 @@ export async function getInvoiceData(orderId: string): Promise<InvoiceData | nul
     .eq('id', orderId)
     .single();
 
-  if (orderError || !order) {
-    console.error('Order Fetch Error:', orderError);
-    return null;
-  }
+  if (orderError || !order) return null;
 
-  // 2. Fetch Invoice Data (Just for the Invoice Number & Dates)
+  // 2. Fetch Invoice (Just for Invoice Number)
   const { data: invoice } = await supabase
     .from('invoices')
     .select('invoice_number, issue_date, due_date, notes')
     .eq('order_id', orderId)
     .maybeSingle();
 
-  // 3. Build the Data Object
+  // 3. Map the Data
   const invNumber = invoice?.invoice_number || order.order_number || 'INV-PENDING';
-  
-  // Date Logic
   const issueDate = invoice?.issue_date ? new Date(invoice.issue_date) : new Date(order.created_at);
   const dueDate = invoice?.due_date ? new Date(invoice.due_date) : new Date(order.created_at);
 
-  // Address Logic: Use the text column from your CSV
+  // Address: Use the text column from Orders
   const finalAddress = order.shipping_address || order.delivery_location || 'Address not provided';
 
-  // Phone Logic: Use contact_number from Orders (per your CSV)
+  // Phone: Use contact_number from Orders (fallback to profile)
   const finalPhone = order.contact_number || order.user?.phone || 'N/A';
 
-  // Items Logic
   const items = order.items?.map((item: any) => {
     const qty = safeNum(item.quantity) || 1;
     const price = safeNum(item.price_at_time);
@@ -98,24 +92,20 @@ export async function getInvoiceData(orderId: string): Promise<InvoiceData | nul
     issueDate: issueDate.toLocaleDateString('en-BD'),
     dueDate: dueDate.toLocaleDateString('en-BD'),
     customer: {
-      name: order.user?.full_name || 'Valued Customer',
+      name: order.user?.full_name || 'Customer',
       phone: finalPhone,
       address: finalAddress,
     },
     items: items,
-    
-    // --- MONEY MAPPING (Fixing the 0.00 issue) ---
+    // Money from Orders table
     subtotal: safeNum(order.subtotal),
     discountAmount: safeNum(order.discount),
     shippingCost: safeNum(order.shipping_cost),
     totalAmount: safeNum(order.total), 
-    // ---------------------------------------------
-    
-    notes: invoice?.notes || order.notes || 'Thank you for shopping with Spraxe!',
+    notes: invoice?.notes || order.notes || '',
   };
 }
 
-// Generates the HTML string
 export function generateInvoiceHTML(data: InvoiceData): string {
   const itemsHTML = data.items.map(item => `
     <tr>
@@ -142,14 +132,13 @@ export function generateInvoiceHTML(data: InvoiceData): string {
         .totals { width: 300px; margin-left: auto; }
         .row { display: flex; justify-content: space-between; padding: 5px 0; }
         .total { border-top: 2px solid #1e3a8a; margin-top: 10px; padding-top: 10px; font-weight: bold; color: #1e3a8a; font-size: 18px; }
-        .footer { margin-top: 50px; text-align: center; font-size: 12px; color: #888; border-top: 1px solid #eee; padding-top: 20px; }
       </style>
     </head>
     <body>
       <div class="header">
         <div>
           <h1 class="company-name">SPRAXE</h1>
-          <div>Vatara, Dhaka, Bangladesh</div>
+          <div>Vatara, Dhaka</div>
           <div>09638371951</div>
         </div>
         <div style="text-align: right;">
@@ -185,10 +174,6 @@ export function generateInvoiceHTML(data: InvoiceData): string {
         ${data.discountAmount > 0 ? `<div class="row" style="color:red;"><span>Discount:</span><span>-৳${formatCurrency(data.discountAmount)}</span></div>` : ''}
         ${data.shippingCost > 0 ? `<div class="row"><span>Shipping:</span><span>৳${formatCurrency(data.shippingCost)}</span></div>` : ''}
         <div class="row total"><span>Total:</span><span>৳${formatCurrency(data.totalAmount)}</span></div>
-      </div>
-
-      <div class="footer">
-        Thank you for shopping with Spraxe!
       </div>
     </body>
     </html>
