@@ -15,18 +15,16 @@ export default function InvoicePage() {
   const router = useRouter();
   const { user, profile } = useAuth();
   const { toast } = useToast();
-  
-  // We use the raw HTML string to put into the iframe
   const [invoiceHTML, setInvoiceHTML] = useState<string>('');
   const [invoiceData, setInvoiceData] = useState<InvoiceData | null>(null);
   const [loading, setLoading] = useState(true);
   
-  // Ref for printing
+  // Ref to print the iframe content
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
-    // 1. Auth check
     if (user === undefined) return;
+    
     if (!user) {
       router.push('/');
       return;
@@ -37,22 +35,20 @@ export default function InvoicePage() {
       if (!orderId) return;
 
       try {
-        // 2. Fetch Data
         const data = await getInvoiceData(orderId);
         
         if (!data) {
           toast({
             title: 'Error',
-            description: 'Invoice details not found.',
+            description: 'Invoice not found.',
             variant: 'destructive',
           });
-          // Smart redirect based on role
           router.push(profile?.role === 'admin' ? '/admin' : '/dashboard');
           return;
         }
 
-        // 3. Set Data & HTML
         setInvoiceData(data);
+        // Generate the full HTML string here
         setInvoiceHTML(generateInvoiceHTML(data));
       } catch (error) {
         console.error("Invoice Error:", error);
@@ -99,11 +95,10 @@ export default function InvoicePage() {
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-8">
       <div className="max-w-4xl mx-auto">
-        {/* Header Controls */}
         <div className="flex flex-col md:flex-row items-center justify-between mb-6 gap-4">
           <Button 
             variant="ghost" 
-            onClick={() => router.push(profile?.role === 'admin' ? '/admin' : '/dashboard')} 
+            onClick={() => router.push(profile?.role === 'admin' ? '/admin' : '/dashboard')}
             className="gap-2 self-start md:self-auto"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -122,18 +117,16 @@ export default function InvoicePage() {
           </div>
         </div>
 
-        {/* Invoice Display Area */}
         <Card className="shadow-lg overflow-hidden">
           <CardContent className="p-0 bg-white">
-            {/* THE FIX: Using 'srcDoc' inside an iframe. 
-                This forces the browser to render the HTML string as a complete document,
-                preserving all styles and structure.
+            {/* The srcDoc attribute tells the iframe to render the string as HTML.
+               This is critical for showing the styles properly.
             */}
             <iframe
               ref={iframeRef}
               srcDoc={invoiceHTML}
               title="Invoice"
-              className="w-full h-[1100px] border-none"
+              className="w-full h-[1000px] border-none"
               sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
             />
           </CardContent>
