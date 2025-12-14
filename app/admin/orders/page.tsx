@@ -27,10 +27,12 @@ interface Order {
   total: number;
   total_amount: number;
   created_at: string;
+  contact_number: string; // <--- ADDED: This exists in your orders table
   profiles: {
     full_name: string;
     email: string;
-    contact_number: string; // <--- CHANGED to contact_number
+    contact_number?: string;
+    phone?: string;
   };
 }
 
@@ -53,7 +55,7 @@ export default function OrdersManagement() {
   const fetchOrders = async () => {
     setLoading(true);
     
-    // Updated Query: fetching contact_number instead of phone
+    // We select '*' which grabs 'contact_number' from orders automatically
     let query = supabase
       .from('orders')
       .select(`
@@ -61,7 +63,8 @@ export default function OrdersManagement() {
         profiles (
           full_name,
           email,
-          contact_number
+          contact_number,
+          phone
         )
       `)
       .order('created_at', { ascending: false });
@@ -186,10 +189,10 @@ export default function OrdersManagement() {
                           {order.profiles?.full_name || 'Unknown Name'}
                         </div>
 
-                        {/* Phone - Now uses contact_number */}
+                        {/* Phone - PRIORITY: Order Contact > Profile Contact > Profile Phone */}
                         <div className="flex items-center gap-2 text-gray-800 font-medium">
                           <Phone className="w-4 h-4 text-green-600" />
-                          {order.profiles?.contact_number || 'No Phone'}
+                          {order.contact_number || order.profiles?.contact_number || order.profiles?.phone || 'No Phone'}
                         </div>
 
                         {/* Email */}
