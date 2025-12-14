@@ -37,32 +37,73 @@ const formatCurrency = (amount: number) => {
 };
 
 export async function getInvoiceData(orderId: string): Promise<InvoiceData | null> {
-  // CHANGED: We now query 'orders' table directly, not 'invoices'
-  const { data: order, error } = await supabase
-    .from('orders')
+  // 1. Try to find the specific INVOICE for this order
+  const { data: invoice, error: invoiceError } = await supabase
+    .from('invoices')
     .select(`
       *,
-      user:profiles (
-        full_name,
-        email,
-        phone,
-        contact_number
-      ),
-      items:order_items (
-        quantity,
-        price_at_time,
-        product:products (name)
+      order:orders (
+        *,
+        user:profiles (
+          full_name,
+          email,
+          phone,
+          contact_number
+        ),
+        items:order_items (
+          quantity,
+          price_at_time,
+          product:products (name)
+        )
       )
     `)
-    .eq('id', orderId)
+    .eq('order_id', orderId)
     .maybeSingle();
 
-  if (error || !order) {
-    console.error("Invoice Fetch Error:", error);
-    return null;
+  // 2. If no invoice exists, fallback to fetching just the ORDER
+  let order: any;
+  let invoiceDetails: any = {};
+
+  if (invoice) {
+    order = invoice.order;
+    invoiceDetails = {
+      number: invoice.invoice_number,
+      issueDate: invoice.issue_date,
+      dueDate: invoice.due_date,
+      notes: invoice.notes
+    };
+  } else {
+    // Fallback: Fetch order directly if invoice record is missing
+    const { data: orderData } = await supabase
+      .from('orders')
+      .select(`
+        *,
+        user:profiles (
+          full_name,
+          email,
+          phone,
+          contact_number
+        ),
+        items:order_items (
+          quantity,
+          price_at_time,
+          product:products (name)
+        )
+      `)
+      .eq('id', orderId)
+      .single();
+      
+    if (!orderData) return null;
+    order = orderData;
+    invoiceDetails = {
+      number: order.order_number, // Fallback to Order Number
+      issueDate: order.created_at,
+      dueDate: order.created_at,
+      notes: ''
+    };
   }
 
-  // Process items
+  // 3. Process Items
   const items = order.items?.map((item: any) => {
     const quantity = safeNum(item.quantity) || 1;
     const price = safeNum(item.price_at_time); 
@@ -76,20 +117,16 @@ export async function getInvoiceData(orderId: string): Promise<InvoiceData | nul
     };
   }) || [];
 
-  // ADDRESS LOGIC:
-  // 1. Try the 'shipping_address' text column from the orders table (as seen in your CSV)
-  // 2. Fallback to 'delivery_location'
+  // 4. Address Logic
   let finalAddress = order.shipping_address || order.delivery_location || 'N/A';
 
-  // PHONE LOGIC:
-  // 1. Try 'contact_number' from the order directly
-  // 2. Fallback to profile phone
+  // 5. Phone Logic
   const finalPhone = order.contact_number || order.user?.contact_number || order.user?.phone || '';
 
   return {
-    invoiceNumber: order.order_number,
-    issueDate: new Date(order.created_at).toLocaleDateString('en-BD'),
-    dueDate: new Date(order.created_at).toLocaleDateString('en-BD'), // Due date same as issue date for now
+    invoiceNumber: invoiceDetails.number,
+    issueDate: new Date(invoiceDetails.issueDate).toLocaleDateString('en-BD'),
+    dueDate: new Date(invoiceDetails.dueDate).toLocaleDateString('en-BD'),
     customer: {
       name: order.user?.full_name || 'Customer',
       phone: finalPhone,
@@ -97,14 +134,14 @@ export async function getInvoiceData(orderId: string): Promise<InvoiceData | nul
     },
     items: items,
     
-    // --- MAPPED COLUMNS FROM YOUR CSV ---
+    // --- CRITICAL FIX: PULL MONEY FROM 'order', NOT 'invoice' ---
     subtotal: safeNum(order.subtotal),
-    discountAmount: safeNum(order.discount),       // Using 'discount' column
-    shippingCost: safeNum(order.shipping_cost),    // Using 'shipping_cost' column
-    totalAmount: safeNum(order.total),             // Using 'total' column (ignoring total_amount)
-    // ------------------------------------
+    discountAmount: safeNum(order.discount),       
+    shippingCost: safeNum(order.shipping_cost),    
+    totalAmount: safeNum(order.total),             
+    // -----------------------------------------------------------
     
-    notes: order.notes || '',
+    notes: invoiceDetails.notes || order.notes || '',
   };
 }
 
