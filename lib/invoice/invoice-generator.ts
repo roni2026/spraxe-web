@@ -37,7 +37,7 @@ const formatCurrency = (amount: number) => {
 };
 
 export async function getInvoiceData(orderId: string): Promise<InvoiceData | null> {
-  // 1. Fetch Order Data (Primary Source for Money, Items & Contact)
+  // 1. Fetch Order Data (Source for Money, Items & Contact)
   const { data: order, error: orderError } = await supabase
     .from('orders')
     .select(`
@@ -61,7 +61,7 @@ export async function getInvoiceData(orderId: string): Promise<InvoiceData | nul
     return null;
   }
 
-  // 2. Fetch Invoice Data (Primary Source for Invoice # & Dates)
+  // 2. Fetch Invoice Data (Source for Invoice # & Dates)
   const { data: invoice } = await supabase
     .from('invoices')
     .select('invoice_number, issue_date, due_date, notes')
