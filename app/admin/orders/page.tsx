@@ -27,12 +27,11 @@ interface Order {
   total: number;
   total_amount: number;
   created_at: string;
-  contact_number: string; // <--- ADDED: This exists in your orders table
+  contact_number: string; // From 'orders' table
   profiles: {
     full_name: string;
     email: string;
-    contact_number?: string;
-    phone?: string;
+    phone: string; // <--- FIXED: 'profiles' table uses 'phone'
   };
 }
 
@@ -55,7 +54,7 @@ export default function OrdersManagement() {
   const fetchOrders = async () => {
     setLoading(true);
     
-    // We select '*' which grabs 'contact_number' from orders automatically
+    // FIXED QUERY: selecting 'phone' from profiles, not 'contact_number'
     let query = supabase
       .from('orders')
       .select(`
@@ -63,8 +62,7 @@ export default function OrdersManagement() {
         profiles (
           full_name,
           email,
-          contact_number,
-          phone
+          phone 
         )
       `)
       .order('created_at', { ascending: false });
@@ -174,7 +172,6 @@ export default function OrdersManagement() {
                     className="border rounded-lg p-4 hover:bg-gray-50 transition-colors"
                   >
                     <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-3">
-                      {/* Customer Info Section */}
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
                            <h3 className="font-bold text-lg">Order #{order.order_number}</h3>
@@ -183,26 +180,23 @@ export default function OrdersManagement() {
                            </span>
                         </div>
 
-                        {/* Name */}
                         <div className="flex items-center gap-2 text-gray-900 font-medium">
                           <User className="w-4 h-4 text-gray-500" />
                           {order.profiles?.full_name || 'Unknown Name'}
                         </div>
 
-                        {/* Phone - PRIORITY: Order Contact > Profile Contact > Profile Phone */}
+                        {/* PHONE LOGIC: Order Contact (Preferred) -> Profile Phone -> 'No Phone' */}
                         <div className="flex items-center gap-2 text-gray-800 font-medium">
                           <Phone className="w-4 h-4 text-green-600" />
-                          {order.contact_number || order.profiles?.contact_number || order.profiles?.phone || 'No Phone'}
+                          {order.contact_number || order.profiles?.phone || 'No Phone'}
                         </div>
 
-                        {/* Email */}
                         <div className="flex items-center gap-2 text-sm text-gray-500">
                           <Mail className="w-4 h-4 text-gray-400" />
                           {order.profiles?.email || 'No Email'}
                         </div>
                       </div>
 
-                      {/* Status & Action Section */}
                       <div className="flex flex-col items-end gap-2">
                         <p className="text-xl font-bold text-blue-900">৳{order.total || order.total_amount}</p>
                         {getStatusBadge(order.status)}
