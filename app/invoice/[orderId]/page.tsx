@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useAuth } from '@/lib/auth/auth-context'; // Ensure this provides 'profile'
+import { useAuth } from '@/lib/auth/auth-context';
 import { getInvoiceData, generateInvoiceHTML, InvoiceData } from '@/lib/invoice/invoice-generator';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -13,17 +13,20 @@ import { Download, ArrowLeft, Printer } from 'lucide-react';
 export default function InvoicePage() {
   const params = useParams();
   const router = useRouter();
-  const { user, profile } = useAuth(); // <--- Get profile to check role
+  const { user, profile } = useAuth();
   const { toast } = useToast();
   const [invoice, setInvoice] = useState<InvoiceData | null>(null);
   const [loading, setLoading] = useState(true);
+  
+  // Ref for the iframe to inject content
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
-    // If auth is still loading, wait (optional safety check)
-    if (user === undefined) return; 
+    // Wait for auth to load
+    if (user === undefined) return;
     
     if (!user) {
-      router.push('/login'); // Redirect to login, not just home
+      router.push('/'); 
       return;
     }
 
@@ -39,7 +42,6 @@ export default function InvoicePage() {
             description: 'Invoice details not found.',
             variant: 'destructive',
           });
-          // Redirect based on role if not found
           router.push(profile?.role === 'admin' ? '/admin' : '/dashboard');
           return;
         }
@@ -54,8 +56,19 @@ export default function InvoicePage() {
     fetchInvoice();
   }, [user, profile, params?.orderId, router, toast]);
 
+  // Inject HTML into iframe whenever invoice data changes
+  useEffect(() => {
+    if (invoice && iframeRef.current) {
+      const doc = iframeRef.current.contentDocument;
+      if (doc) {
+        doc.open();
+        doc.write(generateInvoiceHTML(invoice));
+        doc.close();
+      }
+    }
+  }, [invoice]);
+
   const handleBack = () => {
-    // Smart Redirect: Admins go to Admin Panel, Customers go to Dashboard
     if (profile?.role === 'admin') {
       router.push('/admin');
     } else {
@@ -64,14 +77,9 @@ export default function InvoicePage() {
   };
 
   const handlePrint = () => {
-    if (!invoice) return;
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
-    printWindow.document.write(generateInvoiceHTML(invoice));
-    printWindow.document.close();
-    printWindow.onload = () => {
-      printWindow.print();
-    };
+    if (iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.print();
+    }
   };
 
   const handleDownload = () => {
@@ -104,6 +112,7 @@ export default function InvoicePage() {
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-8">
       <div className="max-w-4xl mx-auto">
+        {/* Header Controls */}
         <div className="flex flex-col md:flex-row items-center justify-between mb-6 gap-4">
           <Button variant="ghost" onClick={handleBack} className="gap-2 self-start md:self-auto">
             <ArrowLeft className="w-4 h-4" />
@@ -122,12 +131,17 @@ export default function InvoicePage() {
           </div>
         </div>
 
-        <Card className="shadow-lg">
-          <CardContent className="p-0 overflow-hidden rounded-lg">
-            {/* Render the Invoice HTML safely */}
-            <div
-              dangerouslySetInnerHTML={{ __html: generateInvoiceHTML(invoice) }}
-              className="bg-white"
+        {/* Invoice Display Area */}
+        <Card className="shadow-lg overflow-hidden">
+          <CardContent className="p-0 bg-white">
+            {/* Use iframe to isolate styles. 
+               We set a fixed height or use calc to make it look like a page.
+            */}
+            <iframe
+              ref={iframeRef}
+              title="Invoice"
+              className="w-full h-[800px] border-none"
+              sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
             />
           </CardContent>
         </Card>
