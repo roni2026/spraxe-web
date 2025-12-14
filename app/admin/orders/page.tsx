@@ -8,7 +8,7 @@ import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Package, Eye } from 'lucide-react';
+import { ArrowLeft, Package, Eye, Phone, Mail, User } from 'lucide-react';
 import Link from 'next/link';
 import {
   Select,
@@ -30,6 +30,7 @@ interface Order {
   profiles: {
     full_name: string;
     email: string;
+    contact_number: string; // <--- CHANGED to contact_number
   };
 }
 
@@ -49,17 +50,18 @@ export default function OrdersManagement() {
     fetchOrders();
   }, [user, profile, filter]);
 
-const fetchOrders = async () => {
+  const fetchOrders = async () => {
     setLoading(true);
     
-    // Updated Query
+    // Updated Query: fetching contact_number instead of phone
     let query = supabase
       .from('orders')
       .select(`
         *,
         profiles (
           full_name,
-          email
+          email,
+          contact_number
         )
       `)
       .order('created_at', { ascending: false });
@@ -71,7 +73,7 @@ const fetchOrders = async () => {
     const { data, error } = await query;
 
     if (error) {
-      console.error("Supabase Fetch Error:", error); // Check Console for details
+      console.error("Supabase Fetch Error:", error);
       toast({
         title: 'Error',
         description: `Failed to fetch orders: ${error.message}`,
@@ -166,45 +168,66 @@ const fetchOrders = async () => {
                 {orders.map((order) => (
                   <div
                     key={order.id}
-                    className="border rounded-lg p-4 hover:bg-gray-50"
+                    className="border rounded-lg p-4 hover:bg-gray-50 transition-colors"
                   >
-                    <div className="flex items-center justify-between mb-3">
-                      <div>
-                        <h3 className="font-semibold">Order #{order.order_number}</h3>
-                        <p className="text-sm text-gray-600">
-                          {order.profiles?.full_name || 'Unknown'} ({order.profiles?.email || 'No email'})
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          {new Date(order.created_at).toLocaleDateString()} at {new Date(order.created_at).toLocaleTimeString()}
-                        </p>
+                    <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-3">
+                      {/* Customer Info Section */}
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                           <h3 className="font-bold text-lg">Order #{order.order_number}</h3>
+                           <span className="text-xs text-gray-400">
+                             {new Date(order.created_at).toLocaleDateString()}
+                           </span>
+                        </div>
+
+                        {/* Name */}
+                        <div className="flex items-center gap-2 text-gray-900 font-medium">
+                          <User className="w-4 h-4 text-gray-500" />
+                          {order.profiles?.full_name || 'Unknown Name'}
+                        </div>
+
+                        {/* Phone - Now uses contact_number */}
+                        <div className="flex items-center gap-2 text-gray-800 font-medium">
+                          <Phone className="w-4 h-4 text-green-600" />
+                          {order.profiles?.contact_number || 'No Phone'}
+                        </div>
+
+                        {/* Email */}
+                        <div className="flex items-center gap-2 text-sm text-gray-500">
+                          <Mail className="w-4 h-4 text-gray-400" />
+                          {order.profiles?.email || 'No Email'}
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <p className="text-lg font-bold text-blue-900">৳{order.total || order.total_amount}</p>
+
+                      {/* Status & Action Section */}
+                      <div className="flex flex-col items-end gap-2">
+                        <p className="text-xl font-bold text-blue-900">৳{order.total || order.total_amount}</p>
                         {getStatusBadge(order.status)}
+                        
+                        <div className="flex gap-2 mt-2">
+                          <Select
+                            value={order.status}
+                            onValueChange={(value) => handleStatusChange(order.id, value)}
+                          >
+                            <SelectTrigger className="w-32 h-8 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="pending">Pending</SelectItem>
+                              <SelectItem value="processing">Processing</SelectItem>
+                              <SelectItem value="shipped">Shipped</SelectItem>
+                              <SelectItem value="delivered">Delivered</SelectItem>
+                              <SelectItem value="cancelled">Cancelled</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <Link href={`/invoice/${order.id}`}>
+                            <Button variant="outline" size="sm" className="h-8 text-xs">
+                              <Eye className="w-3 h-3 mr-1" />
+                              View
+                            </Button>
+                          </Link>
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <Select
-                        value={order.status}
-                        onValueChange={(value) => handleStatusChange(order.id, value)}
-                      >
-                        <SelectTrigger className="w-40">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="pending">Pending</SelectItem>
-                          <SelectItem value="processing">Processing</SelectItem>
-                          <SelectItem value="shipped">Shipped</SelectItem>
-                          <SelectItem value="delivered">Delivered</SelectItem>
-                          <SelectItem value="cancelled">Cancelled</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <Link href={`/invoice/${order.id}`}>
-                        <Button variant="outline" size="sm">
-                          <Eye className="w-4 h-4 mr-2" />
-                          View Invoice
-                        </Button>
-                      </Link>
                     </div>
                   </div>
                 ))}
