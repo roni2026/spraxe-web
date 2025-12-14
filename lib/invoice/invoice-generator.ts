@@ -22,13 +22,13 @@ export interface InvoiceData {
   notes: string;
 }
 
-// Helper to prevent NaN errors
+// Helper to safely convert to number (prevents NaN)
 const safeNum = (value: any): number => {
   const num = Number(value);
   return isNaN(num) ? 0 : num;
 };
 
-// Helper for currency formatting (e.g. 1,500.00)
+// Helper to format currency (e.g., 1,500.00)
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-BD', {
     minimumFractionDigits: 2,
@@ -37,7 +37,7 @@ const formatCurrency = (amount: number) => {
 };
 
 export async function getInvoiceData(orderId: string): Promise<InvoiceData | null> {
-  // 1. Fetch Order Data (Primary Source for Money & Contact)
+  // 1. Fetch Order Data (Primary Source for Money, Items & Contact)
   const { data: order, error: orderError } = await supabase
     .from('orders')
     .select(`
@@ -45,8 +45,7 @@ export async function getInvoiceData(orderId: string): Promise<InvoiceData | nul
       user:profiles (
         full_name,
         email,
-        phone,
-        contact_number
+        phone
       ),
       items:order_items (
         quantity,
@@ -69,18 +68,18 @@ export async function getInvoiceData(orderId: string): Promise<InvoiceData | nul
     .eq('order_id', orderId)
     .maybeSingle();
 
-  // 3. Construct Data (Hybrid Approach)
+  // 3. Construct Final Data (Hybrid Approach)
   
-  // Use Invoice Number if exists, otherwise generate fallback
+  // Invoice Number & Dates (Fallback to Order data if Invoice missing)
   const invNumber = invoice?.invoice_number || order.order_number || 'INV-PENDING';
   const issueDate = invoice?.issue_date ? new Date(invoice.issue_date) : new Date(order.created_at);
   const dueDate = invoice?.due_date ? new Date(invoice.due_date) : new Date(order.created_at);
 
-  // Address: Prefer 'shipping_address' (text column), fallback to 'delivery_location'
+  // Address Logic: Prefer 'shipping_address' (text), fallback to 'delivery_location'
   const finalAddress = order.shipping_address || order.delivery_location || 'Address not provided';
 
-  // Phone: Prefer Order Contact -> Profile Contact -> Profile Phone
-  const finalPhone = order.contact_number || order.user?.contact_number || order.user?.phone || 'N/A';
+  // Phone Logic: Prefer 'contact_number' (Orders) -> 'phone' (Profiles)
+  const finalPhone = order.contact_number || order.user?.phone || 'N/A';
 
   // Process Items
   const items = order.items?.map((item: any) => {
@@ -104,12 +103,14 @@ export async function getInvoiceData(orderId: string): Promise<InvoiceData | nul
       address: finalAddress,
     },
     items: items,
-    // --- MONEY COLUMNS FROM ORDERS TABLE ---
+    
+    // --- MONEY COLUMNS (From Orders Table) ---
     subtotal: safeNum(order.subtotal),
     discountAmount: safeNum(order.discount),
     shippingCost: safeNum(order.shipping_cost),
     totalAmount: safeNum(order.total), 
-    // ---------------------------------------
+    // -----------------------------------------
+    
     notes: invoice?.notes || order.notes || 'Thank you for shopping with Spraxe!',
   };
 }
