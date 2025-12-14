@@ -20,23 +20,42 @@ export default function InvoicePage() {
   const [invoiceData, setInvoiceData] = useState<InvoiceData | null>(null);
   const [loading, setLoading] = useState(true);
   
+  // Ref for the iframe (allows printing)
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
+    // 1. Wait for user to be logged in
     if (user === undefined) return;
-    if (!user) { router.push('/'); return; }
+    if (!user) {
+      router.push('/');
+      return;
+    }
 
     const fetchInvoice = async () => {
-      const data = await getInvoiceData(params.orderId as string);
-      if (!data) {
-        toast({ title: 'Error', description: 'Invoice not found', variant: 'destructive' });
-        router.push(profile?.role === 'admin' ? '/admin' : '/dashboard');
-        return;
+      const orderId = params?.orderId as string;
+      if (!orderId) return;
+
+      try {
+        // 2. Fetch (and Auto-Generate) the Invoice
+        const data = await getInvoiceData(orderId);
+        
+        if (!data) {
+          toast({
+            title: 'Error',
+            description: 'Could not load invoice data.',
+            variant: 'destructive',
+          });
+          return;
+        }
+
+        // 3. Set Data
+        setInvoiceData(data);
+        setInvoiceHTML(generateInvoiceHTML(data));
+      } catch (error) {
+        console.error("Invoice Error:", error);
+      } finally {
+        setLoading(false);
       }
-      setInvoiceData(data);
-      // Generate the full HTML string here
-      setInvoiceHTML(generateInvoiceHTML(data));
-      setLoading(false);
     };
 
     fetchInvoice();
@@ -60,34 +79,59 @@ export default function InvoicePage() {
     toast({ title: 'Success', description: 'Invoice downloaded' });
   };
 
-  if (loading) return <div className="p-8"><Skeleton className="w-full h-96" /></div>;
-  if (!invoiceData) return null;
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-8">
+        <div className="max-w-4xl mx-auto">
+          <Skeleton className="w-full h-96" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!invoiceData) {
+    return (
+      <div className="p-10 text-center">
+        <h2 className="text-xl font-bold text-red-600">Order Not Found</h2>
+        <Button className="mt-4" onClick={() => router.back()}>Go Back</Button>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
+    <div className="min-h-screen bg-gray-50 p-4 md:p-8">
       <div className="max-w-4xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <Button variant="ghost" onClick={() => router.push(profile?.role === 'admin' ? '/admin' : '/dashboard')}>
-            <ArrowLeft className="w-4 h-4 mr-2" /> Back
+        <div className="flex flex-col md:flex-row items-center justify-between mb-6 gap-4">
+          <Button 
+            variant="ghost" 
+            onClick={() => router.back()}
+            className="gap-2 self-start md:self-auto"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back
           </Button>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={handleDownload}>
-              <Download className="w-4 h-4 mr-2" /> Download
+          
+          <div className="flex gap-2 w-full md:w-auto">
+            <Button variant="outline" onClick={handleDownload} className="gap-2 flex-1 md:flex-none">
+              <Download className="w-4 h-4" />
+              Download
             </Button>
-            <Button onClick={handlePrint}>
-              <Printer className="w-4 h-4 mr-2" /> Print Invoice
+            <Button onClick={handlePrint} className="gap-2 bg-blue-900 hover:bg-blue-800 flex-1 md:flex-none">
+              <Printer className="w-4 h-4" />
+              Print
             </Button>
           </div>
         </div>
 
-        <Card className="overflow-hidden">
+        <Card className="shadow-lg overflow-hidden">
           <CardContent className="p-0 bg-white">
-            {/* The srcDoc is CRITICAL here. It makes the styles work. */}
+            {/* The srcDoc is CRITICAL. It makes the styles show up correctly. */}
             <iframe
               ref={iframeRef}
               srcDoc={invoiceHTML}
               title="Invoice"
-              className="w-full h-[1000px] border-none"
+              className="w-full h-[1100px] border-none"
+              sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
             />
           </CardContent>
         </Card>
