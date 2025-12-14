@@ -15,15 +15,18 @@ export default function InvoicePage() {
   const router = useRouter();
   const { user, profile } = useAuth();
   const { toast } = useToast();
-  const [invoice, setInvoice] = useState<InvoiceData | null>(null);
+  
+  // We use the raw HTML string to put into the iframe
+  const [invoiceHTML, setInvoiceHTML] = useState<string>('');
+  const [invoiceData, setInvoiceData] = useState<InvoiceData | null>(null);
   const [loading, setLoading] = useState(true);
   
-  // Ref to control the iframe
+  // Ref for printing
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
+    // 1. Auth check
     if (user === undefined) return;
-    
     if (!user) {
       router.push('/');
       return;
@@ -34,17 +37,23 @@ export default function InvoicePage() {
       if (!orderId) return;
 
       try {
+        // 2. Fetch Data
         const data = await getInvoiceData(orderId);
+        
         if (!data) {
           toast({
             title: 'Error',
             description: 'Invoice details not found.',
             variant: 'destructive',
           });
+          // Smart redirect based on role
           router.push(profile?.role === 'admin' ? '/admin' : '/dashboard');
           return;
         }
-        setInvoice(data);
+
+        // 3. Set Data & HTML
+        setInvoiceData(data);
+        setInvoiceHTML(generateInvoiceHTML(data));
       } catch (error) {
         console.error("Invoice Error:", error);
       } finally {
@@ -55,26 +64,6 @@ export default function InvoicePage() {
     fetchInvoice();
   }, [user, profile, params?.orderId, router, toast]);
 
-  // THIS IS THE FIX: Inject HTML into an iframe
-  useEffect(() => {
-    if (invoice && iframeRef.current) {
-      const doc = iframeRef.current.contentDocument;
-      if (doc) {
-        doc.open();
-        doc.write(generateInvoiceHTML(invoice));
-        doc.close();
-      }
-    }
-  }, [invoice]);
-
-  const handleBack = () => {
-    if (profile?.role === 'admin') {
-      router.push('/admin');
-    } else {
-      router.push('/dashboard');
-    }
-  };
-
   const handlePrint = () => {
     if (iframeRef.current?.contentWindow) {
       iframeRef.current.contentWindow.print();
@@ -82,13 +71,12 @@ export default function InvoicePage() {
   };
 
   const handleDownload = () => {
-    if (!invoice) return;
-    const html = generateInvoiceHTML(invoice);
-    const blob = new Blob([html], { type: 'text/html' });
+    if (!invoiceData) return;
+    const blob = new Blob([invoiceHTML], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${invoice.invoiceNumber}.html`;
+    a.download = `${invoiceData.invoiceNumber}.html`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -106,14 +94,18 @@ export default function InvoicePage() {
     );
   }
 
-  if (!invoice) return null;
+  if (!invoiceData) return null;
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-8">
       <div className="max-w-4xl mx-auto">
         {/* Header Controls */}
         <div className="flex flex-col md:flex-row items-center justify-between mb-6 gap-4">
-          <Button variant="ghost" onClick={handleBack} className="gap-2 self-start md:self-auto">
+          <Button 
+            variant="ghost" 
+            onClick={() => router.push(profile?.role === 'admin' ? '/admin' : '/dashboard')} 
+            className="gap-2 self-start md:self-auto"
+          >
             <ArrowLeft className="w-4 h-4" />
             {profile?.role === 'admin' ? 'Back to Orders' : 'Back to Dashboard'}
           </Button>
@@ -133,8 +125,13 @@ export default function InvoicePage() {
         {/* Invoice Display Area */}
         <Card className="shadow-lg overflow-hidden">
           <CardContent className="p-0 bg-white">
+            {/* THE FIX: Using 'srcDoc' inside an iframe. 
+                This forces the browser to render the HTML string as a complete document,
+                preserving all styles and structure.
+            */}
             <iframe
               ref={iframeRef}
+              srcDoc={invoiceHTML}
               title="Invoice"
               className="w-full h-[1100px] border-none"
               sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
