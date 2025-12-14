@@ -22,13 +22,11 @@ export interface InvoiceData {
   notes: string;
 }
 
-// Safety helper to prevent "NaN" errors
 const safeNum = (value: any): number => {
   const num = Number(value);
   return isNaN(num) ? 0 : num;
 };
 
-// Currency formatter
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-BD', {
     minimumFractionDigits: 2,
@@ -37,12 +35,15 @@ const formatCurrency = (amount: number) => {
 };
 
 export async function getInvoiceData(orderId: string): Promise<InvoiceData | null> {
-  // 1. Fetch Order Data (This is the source of truth for Money & Contact)
+  console.log("1. Starting Invoice Fetch for Order:", orderId);
+
+  // STEP 1: Fetch the Order (We need this first)
+  // Note: We removed the 'user:' alias to be safer with Supabase relations
   const { data: order, error: orderError } = await supabase
     .from('orders')
     .select(`
       *,
-      user:profiles (
+      profiles (
         full_name,
         email,
         phone
@@ -54,65 +55,107 @@ export async function getInvoiceData(orderId: string): Promise<InvoiceData | nul
       )
     `)
     .eq('id', orderId)
-    .single();
+    .maybeSingle();
 
-  if (orderError || !order) return null;
+  if (orderError) {
+    console.error("Supabase Order Error:", orderError);
+    return null;
+  }
+  
+  if (!order) {
+    console.error("Order not found in database.");
+    return null;
+  }
 
-  // 2. Fetch Invoice (Just for Invoice Number)
-  const { data: invoice } = await supabase
+  // STEP 2: Check if Invoice Exists
+  let { data: invoice, error: invoiceError } = await supabase
     .from('invoices')
-    .select('invoice_number, issue_date, due_date, notes')
+    .select('*')
     .eq('order_id', orderId)
     .maybeSingle();
 
-  // 3. Map the Data
-  const invNumber = invoice?.invoice_number || order.order_number || 'INV-PENDING';
-  const issueDate = invoice?.issue_date ? new Date(invoice.issue_date) : new Date(order.created_at);
-  const dueDate = invoice?.due_date ? new Date(invoice.due_date) : new Date(order.created_at);
+  // STEP 3: Auto-Generate Invoice if missing
+  if (!invoice) {
+    console.log("2. Invoice missing. Generating new one...");
+    
+    // Create new Invoice Number (e.g., INV-20251215-3212)
+    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+    const newInvoiceNumber = `INV-${dateStr}-${randomSuffix}`;
 
-  // Address: Use the text column from Orders
-  const finalAddress = order.shipping_address || order.delivery_location || 'Address not provided';
+    // Insert into Database
+    const { data: newInvoice, error: createError } = await supabase
+      .from('invoices')
+      .insert({
+        order_id: orderId,
+        invoice_number: newInvoiceNumber,
+        issue_date: new Date().toISOString(),
+        due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // +7 days
+        subtotal: order.subtotal || 0,
+        tax_amount: 0,
+        discount_amount: order.discount || 0,
+        total_amount: order.total || 0,
+        notes: 'Thank you for shopping with Spraxe!'
+      })
+      .select()
+      .single();
 
-  // Phone: Use contact_number from Orders (fallback to profile)
-  const finalPhone = order.contact_number || order.user?.phone || 'N/A';
+    if (createError) {
+      console.error("Failed to create invoice:", createError);
+      // Fallback: Show preview without saving if DB write fails
+      invoice = {
+        invoice_number: newInvoiceNumber,
+        issue_date: new Date().toISOString(),
+        due_date: new Date().toISOString(),
+        notes: 'Preview Mode'
+      };
+    } else {
+      invoice = newInvoice;
+    }
+  }
 
-  const items = order.items?.map((item: any) => {
-    const qty = safeNum(item.quantity) || 1;
-    const price = safeNum(item.price_at_time);
-    return {
-      name: item.product?.name || 'Product',
-      quantity: qty,
-      price: price,
-      total: price * qty,
-    };
-  }) || [];
+  // STEP 4: Prepare Final Data
+  // Handle Profile (Array vs Object issue safety)
+  const profileData = Array.isArray(order.profiles) ? order.profiles[0] : order.profiles;
+  const customerName = profileData?.full_name || 'Customer';
+  const customerPhone = order.contact_number || profileData?.phone || 'N/A';
+  const customerAddress = order.shipping_address || order.delivery_location || 'Address not provided';
+
+  const items = order.items?.map((item: any) => ({
+    name: item.product?.name || 'Product',
+    quantity: safeNum(item.quantity),
+    price: safeNum(item.price_at_time),
+    total: safeNum(item.price_at_time) * safeNum(item.quantity)
+  })) || [];
 
   return {
-    invoiceNumber: invNumber,
-    issueDate: issueDate.toLocaleDateString('en-BD'),
-    dueDate: dueDate.toLocaleDateString('en-BD'),
+    invoiceNumber: invoice.invoice_number,
+    issueDate: new Date(invoice.issue_date).toLocaleDateString('en-BD'),
+    dueDate: new Date(invoice.due_date).toLocaleDateString('en-BD'),
     customer: {
-      name: order.user?.full_name || 'Customer',
-      phone: finalPhone,
-      address: finalAddress,
+      name: customerName,
+      phone: customerPhone,
+      address: customerAddress,
     },
     items: items,
-    // Money from Orders table
+    // Use Order money values as source of truth
     subtotal: safeNum(order.subtotal),
     discountAmount: safeNum(order.discount),
     shippingCost: safeNum(order.shipping_cost),
-    totalAmount: safeNum(order.total), 
-    notes: invoice?.notes || order.notes || '',
+    totalAmount: safeNum(order.total),
+    notes: invoice.notes || '',
   };
 }
 
 export function generateInvoiceHTML(data: InvoiceData): string {
+  if (!data) return "<h1>Error: No Data</h1>";
+
   const itemsHTML = data.items.map(item => `
     <tr>
-      <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">${item.name}</td>
-      <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: center;">${item.quantity}</td>
-      <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: right;">৳${formatCurrency(item.price)}</td>
-      <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: right; font-weight: 600;">৳${formatCurrency(item.total)}</td>
+      <td style="padding:10px;border-bottom:1px solid #eee;">${item.name}</td>
+      <td style="padding:10px;border-bottom:1px solid #eee;text-align:center;">${item.quantity}</td>
+      <td style="padding:10px;border-bottom:1px solid #eee;text-align:right;">৳${formatCurrency(item.price)}</td>
+      <td style="padding:10px;border-bottom:1px solid #eee;text-align:right;">৳${formatCurrency(item.total)}</td>
     </tr>
   `).join('');
 
@@ -120,39 +163,47 @@ export function generateInvoiceHTML(data: InvoiceData): string {
     <!DOCTYPE html>
     <html>
     <head>
-      <meta charset="utf-8">
-      <title>Invoice ${data.invoiceNumber}</title>
       <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 20px; }
-        .header { display: flex; justify-content: space-between; border-bottom: 3px solid #1e3a8a; padding-bottom: 20px; margin-bottom: 30px; }
-        .company-name { font-size: 32px; font-weight: bold; color: #1e3a8a; margin: 0; }
-        .bill-to { background: #f8fafc; padding: 20px; border-radius: 8px; margin-bottom: 30px; border-left: 5px solid #1e3a8a; }
+        body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #333; max-width: 800px; margin: 0 auto; }
+        .header { display: flex; justify-content: space-between; border-bottom: 2px solid #1e3a8a; padding-bottom: 20px; margin-bottom: 30px; }
+        .title { font-size: 28px; font-weight: bold; color: #1e3a8a; margin: 0; }
+        .subtitle { font-size: 14px; color: #666; margin-top: 5px; }
+        .invoice-box { text-align: right; }
+        .invoice-label { font-size: 24px; font-weight: bold; color: #1e3a8a; }
+        
+        .info-card { background: #f8fafc; padding: 20px; border-radius: 8px; margin-bottom: 30px; border-left: 4px solid #1e3a8a; }
+        .info-label { font-size: 12px; text-transform: uppercase; color: #64748b; font-weight: bold; margin-bottom: 5px; }
+        .info-value { font-size: 16px; font-weight: 500; }
+
         table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
-        th { background: #1e3a8a; color: white; padding: 12px; text-align: left; }
+        th { background: #f1f5f9; padding: 12px; text-align: left; font-size: 12px; text-transform: uppercase; color: #475569; }
+        
         .totals { width: 300px; margin-left: auto; }
-        .row { display: flex; justify-content: space-between; padding: 5px 0; }
-        .total { border-top: 2px solid #1e3a8a; margin-top: 10px; padding-top: 10px; font-weight: bold; color: #1e3a8a; font-size: 18px; }
+        .row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; }
+        .total-row { display: flex; justify-content: space-between; padding: 12px 0; border-top: 2px solid #1e3a8a; margin-top: 10px; font-weight: bold; font-size: 18px; color: #1e3a8a; }
+        
+        .footer { margin-top: 50px; text-align: center; font-size: 12px; color: #94a3b8; border-top: 1px solid #eee; padding-top: 20px; }
       </style>
     </head>
     <body>
       <div class="header">
         <div>
-          <h1 class="company-name">SPRAXE</h1>
-          <div>Vatara, Dhaka</div>
-          <div>09638371951</div>
+          <h1 class="title">SPRAXE</h1>
+          <div class="subtitle">Gazipur, Dhaka, Bangladesh</div>
+          <div class="subtitle">09638371951</div>
         </div>
-        <div style="text-align: right;">
-          <h2 style="color: #1e3a8a; margin: 0;">INVOICE</h2>
-          <div><b>${data.invoiceNumber}</b></div>
-          <div>Date: ${data.issueDate}</div>
+        <div class="invoice-box">
+          <div class="invoice-label">INVOICE</div>
+          <div>${data.invoiceNumber}</div>
+          <div>${data.issueDate}</div>
         </div>
       </div>
 
-      <div class="bill-to">
-        <h3 style="margin: 0 0 10px 0; color: #1e3a8a;">BILL TO:</h3>
-        <div><strong>${data.customer.name}</strong></div>
+      <div class="info-card">
+        <div class="info-label">Bill To</div>
+        <div class="info-value">${data.customer.name}</div>
         <div>${data.customer.phone}</div>
-        <div>${data.customer.address}</div>
+        <div style="margin-top:5px; color:#475569;">${data.customer.address}</div>
       </div>
 
       <table>
@@ -170,10 +221,14 @@ export function generateInvoiceHTML(data: InvoiceData): string {
       </table>
 
       <div class="totals">
-        <div class="row"><span>Subtotal:</span><span>৳${formatCurrency(data.subtotal)}</span></div>
-        ${data.discountAmount > 0 ? `<div class="row" style="color:red;"><span>Discount:</span><span>-৳${formatCurrency(data.discountAmount)}</span></div>` : ''}
-        ${data.shippingCost > 0 ? `<div class="row"><span>Shipping:</span><span>৳${formatCurrency(data.shippingCost)}</span></div>` : ''}
-        <div class="row total"><span>Total:</span><span>৳${formatCurrency(data.totalAmount)}</span></div>
+        <div class="row"><span>Subtotal</span><span>৳${formatCurrency(data.subtotal)}</span></div>
+        ${data.discountAmount > 0 ? `<div class="row" style="color:#ef4444;"><span>Discount</span><span>-৳${formatCurrency(data.discountAmount)}</span></div>` : ''}
+        ${data.shippingCost > 0 ? `<div class="row"><span>Shipping</span><span>৳${formatCurrency(data.shippingCost)}</span></div>` : ''}
+        <div class="total-row"><span>Total</span><span>৳${formatCurrency(data.totalAmount)}</span></div>
+      </div>
+
+      <div class="footer">
+        Thank you for shopping with Spraxe!
       </div>
     </body>
     </html>
