@@ -16,58 +16,95 @@ export interface InvoiceData {
     total: number;
   }>;
   subtotal: number;
-  taxAmount: number;
   discountAmount: number;
+  shippingCost: number;
   totalAmount: number;
   notes: string;
 }
 
+// Helper to safely convert to number
+const safeNum = (value: any): number => {
+  const num = Number(value);
+  return isNaN(num) ? 0 : num;
+};
+
+// Helper to format currency
+const formatCurrency = (amount: number) => {
+  return new Intl.NumberFormat('en-BD', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount);
+};
+
 export async function getInvoiceData(orderId: string): Promise<InvoiceData | null> {
-  const { data: invoice, error: invoiceError } = await supabase
-    .from('invoices')
+  // CHANGED: We now query 'orders' table directly, not 'invoices'
+  const { data: order, error } = await supabase
+    .from('orders')
     .select(`
       *,
-      order:orders (
-        *,
-        user:profiles (*),
-        shipping_address:addresses (*),
-        items:order_items (
-          *,
-          product:products (name)
-        )
+      user:profiles (
+        full_name,
+        email,
+        phone,
+        contact_number
+      ),
+      items:order_items (
+        quantity,
+        price_at_time,
+        product:products (name)
       )
     `)
-    .eq('order_id', orderId)
+    .eq('id', orderId)
     .maybeSingle();
 
-  if (invoiceError || !invoice) {
+  if (error || !order) {
+    console.error("Invoice Fetch Error:", error);
     return null;
   }
 
-  const order = invoice.order as any;
+  // Process items
+  const items = order.items?.map((item: any) => {
+    const quantity = safeNum(item.quantity) || 1;
+    const price = safeNum(item.price_at_time); 
+    const total = price * quantity;
+
+    return {
+      name: item.product?.name || 'Product',
+      quantity: quantity,
+      price: price,
+      total: total,
+    };
+  }) || [];
+
+  // ADDRESS LOGIC:
+  // 1. Try the 'shipping_address' text column from the orders table (as seen in your CSV)
+  // 2. Fallback to 'delivery_location'
+  let finalAddress = order.shipping_address || order.delivery_location || 'N/A';
+
+  // PHONE LOGIC:
+  // 1. Try 'contact_number' from the order directly
+  // 2. Fallback to profile phone
+  const finalPhone = order.contact_number || order.user?.contact_number || order.user?.phone || '';
 
   return {
-    invoiceNumber: invoice.invoice_number,
-    issueDate: new Date(invoice.issue_date).toLocaleDateString('en-BD'),
-    dueDate: new Date(invoice.due_date).toLocaleDateString('en-BD'),
+    invoiceNumber: order.order_number,
+    issueDate: new Date(order.created_at).toLocaleDateString('en-BD'),
+    dueDate: new Date(order.created_at).toLocaleDateString('en-BD'), // Due date same as issue date for now
     customer: {
       name: order.user?.full_name || 'Customer',
-      phone: order.user?.phone || '',
-      address: order.shipping_address
-        ? `${order.shipping_address.street_address}, ${order.shipping_address.city}, ${order.shipping_address.postal_code}`
-        : 'N/A',
+      phone: finalPhone,
+      address: finalAddress,
     },
-    items: order.items?.map((item: any) => ({
-      name: item.product?.name || 'Product',
-      quantity: item.quantity,
-      price: parseFloat(item.price_at_time),
-      total: parseFloat(item.price_at_time) * item.quantity,
-    })) || [],
-    subtotal: parseFloat(invoice.subtotal),
-    taxAmount: parseFloat(invoice.tax_amount),
-    discountAmount: parseFloat(invoice.discount_amount),
-    totalAmount: parseFloat(invoice.total_amount),
-    notes: invoice.notes || '',
+    items: items,
+    
+    // --- MAPPED COLUMNS FROM YOUR CSV ---
+    subtotal: safeNum(order.subtotal),
+    discountAmount: safeNum(order.discount),       // Using 'discount' column
+    shippingCost: safeNum(order.shipping_cost),    // Using 'shipping_cost' column
+    totalAmount: safeNum(order.total),             // Using 'total' column (ignoring total_amount)
+    // ------------------------------------
+    
+    notes: order.notes || '',
   };
 }
 
@@ -78,8 +115,8 @@ export function generateInvoiceHTML(data: InvoiceData): string {
     <tr>
       <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">${item.name}</td>
       <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: center;">${item.quantity}</td>
-      <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: right;">৳${item.price.toFixed(2)}</td>
-      <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: right; font-weight: 600;">৳${item.total.toFixed(2)}</td>
+      <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: right;">৳${formatCurrency(item.price)}</td>
+      <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: right; font-weight: 600;">৳${formatCurrency(item.total)}</td>
     </tr>
   `
     )
@@ -92,93 +129,20 @@ export function generateInvoiceHTML(data: InvoiceData): string {
   <meta charset="utf-8">
   <title>Invoice ${data.invoiceNumber}</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      line-height: 1.6;
-      color: #1f2937;
-      max-width: 800px;
-      margin: 0 auto;
-      padding: 20px;
-    }
-    .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: start;
-      margin-bottom: 40px;
-      padding-bottom: 20px;
-      border-bottom: 3px solid #1e3a8a;
-    }
-    .company-info h1 {
-      color: #1e3a8a;
-      margin: 0 0 10px 0;
-      font-size: 32px;
-    }
-    .invoice-details {
-      text-align: right;
-    }
-    .invoice-number {
-      font-size: 24px;
-      font-weight: bold;
-      color: #1e3a8a;
-      margin-bottom: 5px;
-    }
-    .customer-info {
-      background: #f3f4f6;
-      padding: 20px;
-      border-radius: 8px;
-      margin-bottom: 30px;
-    }
-    .customer-info h3 {
-      margin: 0 0 10px 0;
-      color: #1e3a8a;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 30px;
-    }
-    th {
-      background: #1e3a8a;
-      color: white;
-      padding: 12px;
-      text-align: left;
-      font-weight: 600;
-    }
-    th:nth-child(2), th:nth-child(3), th:nth-child(4) {
-      text-align: right;
-    }
-    .totals {
-      margin-left: auto;
-      width: 300px;
-    }
-    .totals-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 8px 0;
-    }
-    .totals-row.total {
-      border-top: 2px solid #1e3a8a;
-      margin-top: 8px;
-      padding-top: 12px;
-      font-size: 18px;
-      font-weight: bold;
-      color: #1e3a8a;
-    }
-    .notes {
-      background: #fef3c7;
-      padding: 15px;
-      border-radius: 8px;
-      margin-top: 30px;
-      border-left: 4px solid #f59e0b;
-    }
-    .footer {
-      margin-top: 40px;
-      padding-top: 20px;
-      border-top: 1px solid #e5e7eb;
-      text-align: center;
-      color: #6b7280;
-      font-size: 14px;
-    }
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #1f2937; max-width: 800px; margin: 0 auto; padding: 20px; }
+    .header { display: flex; justify-content: space-between; align-items: start; margin-bottom: 40px; padding-bottom: 20px; border-bottom: 3px solid #1e3a8a; }
+    .company-info h1 { color: #1e3a8a; margin: 0 0 10px 0; font-size: 32px; }
+    .invoice-number { font-size: 24px; font-weight: bold; color: #1e3a8a; margin-bottom: 5px; }
+    .invoice-details { text-align: right; }
+    .customer-info { background: #f3f4f6; padding: 20px; border-radius: 8px; margin-bottom: 30px; }
+    .customer-info h3 { margin: 0 0 10px 0; color: #1e3a8a; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+    th { background: #1e3a8a; color: white; padding: 12px; text-align: left; font-weight: 600; }
+    th:nth-child(2), th:nth-child(3), th:nth-child(4) { text-align: right; }
+    .totals { margin-left: auto; width: 300px; }
+    .totals-row { display: flex; justify-content: space-between; padding: 8px 0; }
+    .totals-row.total { border-top: 2px solid #1e3a8a; margin-top: 8px; padding-top: 12px; font-size: 18px; font-weight: bold; color: #1e3a8a; }
+    .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #e5e7eb; text-align: center; color: #6b7280; font-size: 14px; }
   </style>
 </head>
 <body>
@@ -220,44 +184,32 @@ export function generateInvoiceHTML(data: InvoiceData): string {
   <div class="totals">
     <div class="totals-row">
       <span>Subtotal:</span>
-      <span>৳${data.subtotal.toFixed(2)}</span>
+      <span>৳${formatCurrency(data.subtotal)}</span>
     </div>
-    ${
-      data.discountAmount > 0
-        ? `
+
+    ${data.discountAmount > 0 ? `
     <div class="totals-row">
       <span>Discount:</span>
-      <span>-৳${data.discountAmount.toFixed(2)}</span>
-    </div>
-    `
-        : ''
-    }
-    ${
-      data.taxAmount > 0
-        ? `
+      <span>-৳${formatCurrency(data.discountAmount)}</span>
+    </div>` : ''}
+
+    ${data.shippingCost > 0 ? `
     <div class="totals-row">
-      <span>Tax:</span>
-      <span>৳${data.taxAmount.toFixed(2)}</span>
-    </div>
-    `
-        : ''
-    }
+      <span>Shipping:</span>
+      <span>৳${formatCurrency(data.shippingCost)}</span>
+    </div>` : ''}
+
     <div class="totals-row total">
       <span>Total Amount:</span>
-      <span>৳${data.totalAmount.toFixed(2)}</span>
+      <span>৳${formatCurrency(data.totalAmount)}</span>
     </div>
   </div>
 
-  ${
-    data.notes
-      ? `
-  <div class="notes">
+  ${data.notes ? `
+  <div style="background: #fef3c7; padding: 15px; border-radius: 8px; margin-top: 30px; border-left: 4px solid #f59e0b;">
     <strong>Notes:</strong><br>
     ${data.notes}
-  </div>
-  `
-      : ''
-  }
+  </div>` : ''}
 
   <div class="footer">
     <p>Thank you for shopping with Spraxe!</p>
