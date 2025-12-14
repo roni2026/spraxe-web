@@ -22,7 +22,6 @@ export default function InvoicePage() {
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
-    // Wait for auth to be determined
     if (user === undefined) return;
     
     if (!user) {
@@ -42,7 +41,6 @@ export default function InvoicePage() {
             description: 'Invoice details not found.',
             variant: 'destructive',
           });
-          // Redirect based on role
           router.push(profile?.role === 'admin' ? '/admin' : '/dashboard');
           return;
         }
@@ -57,7 +55,7 @@ export default function InvoicePage() {
     fetchInvoice();
   }, [user, profile, params?.orderId, router, toast]);
 
-  // Inject the HTML into the iframe whenever data loads
+  // THIS IS THE FIX: Inject HTML into an iframe
   useEffect(() => {
     if (invoice && iframeRef.current) {
       const doc = iframeRef.current.contentDocument;
@@ -78,7 +76,6 @@ export default function InvoicePage() {
   };
 
   const handlePrint = () => {
-    // Print the iframe content, not the whole window
     if (iframeRef.current?.contentWindow) {
       iframeRef.current.contentWindow.print();
     }
@@ -136,7 +133,6 @@ export default function InvoicePage() {
         {/* Invoice Display Area */}
         <Card className="shadow-lg overflow-hidden">
           <CardContent className="p-0 bg-white">
-            {/* The Magic Iframe: Isolates styles so the invoice looks perfect */}
             <iframe
               ref={iframeRef}
               title="Invoice"
