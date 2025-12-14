@@ -19,12 +19,10 @@ export default function InvoicePage() {
   const [invoiceHTML, setInvoiceHTML] = useState<string>('');
   const [invoiceData, setInvoiceData] = useState<InvoiceData | null>(null);
   const [loading, setLoading] = useState(true);
-  
-  // Ref for the iframe (allows printing)
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
-    // 1. Wait for user to be logged in
+    // 1. Auth check
     if (user === undefined) return;
     if (!user) {
       router.push('/');
@@ -36,7 +34,7 @@ export default function InvoicePage() {
       if (!orderId) return;
 
       try {
-        // 2. Fetch (and Auto-Generate) the Invoice
+        // 2. Fetch Data (which now auto-generates if missing)
         const data = await getInvoiceData(orderId);
         
         if (!data) {
@@ -45,6 +43,9 @@ export default function InvoicePage() {
             description: 'Could not load invoice data.',
             variant: 'destructive',
           });
+          // Redirect logic
+          const redirectPath = profile?.role === 'admin' ? '/admin' : '/dashboard';
+          router.push(redirectPath);
           return;
         }
 
@@ -89,14 +90,7 @@ export default function InvoicePage() {
     );
   }
 
-  if (!invoiceData) {
-    return (
-      <div className="p-10 text-center">
-        <h2 className="text-xl font-bold text-red-600">Order Not Found</h2>
-        <Button className="mt-4" onClick={() => router.back()}>Go Back</Button>
-      </div>
-    );
-  }
+  if (!invoiceData) return null;
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-8">
@@ -104,11 +98,11 @@ export default function InvoicePage() {
         <div className="flex flex-col md:flex-row items-center justify-between mb-6 gap-4">
           <Button 
             variant="ghost" 
-            onClick={() => router.back()}
+            onClick={() => router.push(profile?.role === 'admin' ? '/admin' : '/dashboard')}
             className="gap-2 self-start md:self-auto"
           >
             <ArrowLeft className="w-4 h-4" />
-            Back
+            {profile?.role === 'admin' ? 'Back to Orders' : 'Back to Dashboard'}
           </Button>
           
           <div className="flex gap-2 w-full md:w-auto">
@@ -125,7 +119,6 @@ export default function InvoicePage() {
 
         <Card className="shadow-lg overflow-hidden">
           <CardContent className="p-0 bg-white">
-            {/* The srcDoc is CRITICAL. It makes the styles show up correctly. */}
             <iframe
               ref={iframeRef}
               srcDoc={invoiceHTML}
