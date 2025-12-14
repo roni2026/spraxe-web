@@ -2,52 +2,71 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useAuth } from '@/lib/auth/auth-context';
+import { useAuth } from '@/lib/auth/auth-context'; // Ensure this provides 'profile'
 import { getInvoiceData, generateInvoiceHTML, InvoiceData } from '@/lib/invoice/invoice-generator';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import { Download, Mail, ArrowLeft } from 'lucide-react';
+import { Download, ArrowLeft, Printer } from 'lucide-react';
 
 export default function InvoicePage() {
   const params = useParams();
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, profile } = useAuth(); // <--- Get profile to check role
   const { toast } = useToast();
   const [invoice, setInvoice] = useState<InvoiceData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [sending, setSending] = useState(false);
 
   useEffect(() => {
+    // If auth is still loading, wait (optional safety check)
+    if (user === undefined) return; 
+    
     if (!user) {
-      router.push('/');
+      router.push('/login'); // Redirect to login, not just home
       return;
     }
 
     const fetchInvoice = async () => {
-      const data = await getInvoiceData(params.orderId as string);
-      if (!data) {
-        toast({
-          title: 'Error',
-          description: 'Invoice not found',
-          variant: 'destructive',
-        });
-        router.push('/dashboard');
-        return;
+      const orderId = params?.orderId as string;
+      if (!orderId) return;
+
+      try {
+        const data = await getInvoiceData(orderId);
+        if (!data) {
+          toast({
+            title: 'Error',
+            description: 'Invoice details not found.',
+            variant: 'destructive',
+          });
+          // Redirect based on role if not found
+          router.push(profile?.role === 'admin' ? '/admin' : '/dashboard');
+          return;
+        }
+        setInvoice(data);
+      } catch (error) {
+        console.error(error);
+      } finally {
+        setLoading(false);
       }
-      setInvoice(data);
-      setLoading(false);
     };
 
     fetchInvoice();
-  }, [user, params.orderId, router, toast]);
+  }, [user, profile, params?.orderId, router, toast]);
+
+  const handleBack = () => {
+    // Smart Redirect: Admins go to Admin Panel, Customers go to Dashboard
+    if (profile?.role === 'admin') {
+      router.push('/admin');
+    } else {
+      router.push('/dashboard');
+    }
+  };
 
   const handlePrint = () => {
     if (!invoice) return;
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
-
     printWindow.document.write(generateInvoiceHTML(invoice));
     printWindow.document.close();
     printWindow.onload = () => {
@@ -67,11 +86,7 @@ export default function InvoicePage() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-
-    toast({
-      title: 'Success',
-      description: 'Invoice downloaded successfully',
-    });
+    toast({ title: 'Success', description: 'Invoice downloaded' });
   };
 
   if (loading) {
@@ -84,35 +99,32 @@ export default function InvoicePage() {
     );
   }
 
-  if (!invoice) {
-    return null;
-  }
+  if (!invoice) return null;
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
+    <div className="min-h-screen bg-gray-50 p-4 md:p-8">
       <div className="max-w-4xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <Button
-            variant="ghost"
-            onClick={() => router.push('/dashboard')}
-            className="gap-2"
-          >
+        <div className="flex flex-col md:flex-row items-center justify-between mb-6 gap-4">
+          <Button variant="ghost" onClick={handleBack} className="gap-2 self-start md:self-auto">
             <ArrowLeft className="w-4 h-4" />
-            Back to Dashboard
+            {profile?.role === 'admin' ? 'Back to Orders' : 'Back to Dashboard'}
           </Button>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={handleDownload} className="gap-2">
+          
+          <div className="flex gap-2 w-full md:w-auto">
+            <Button variant="outline" onClick={handleDownload} className="gap-2 flex-1 md:flex-none">
               <Download className="w-4 h-4" />
               Download
             </Button>
-            <Button onClick={handlePrint} className="gap-2 bg-blue-900 hover:bg-blue-800">
-              Print Invoice
+            <Button onClick={handlePrint} className="gap-2 bg-blue-900 hover:bg-blue-800 flex-1 md:flex-none">
+              <Printer className="w-4 h-4" />
+              Print
             </Button>
           </div>
         </div>
 
-        <Card>
-          <CardContent className="p-0">
+        <Card className="shadow-lg">
+          <CardContent className="p-0 overflow-hidden rounded-lg">
+            {/* Render the Invoice HTML safely */}
             <div
               dangerouslySetInnerHTML={{ __html: generateInvoiceHTML(invoice) }}
               className="bg-white"
