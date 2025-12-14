@@ -18,15 +18,15 @@ export default function InvoicePage() {
   const [invoice, setInvoice] = useState<InvoiceData | null>(null);
   const [loading, setLoading] = useState(true);
   
-  // Ref for the iframe to inject content
+  // Ref to control the iframe
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
-    // Wait for auth to load
+    // Wait for auth to be determined
     if (user === undefined) return;
     
     if (!user) {
-      router.push('/'); 
+      router.push('/');
       return;
     }
 
@@ -42,12 +42,13 @@ export default function InvoicePage() {
             description: 'Invoice details not found.',
             variant: 'destructive',
           });
+          // Redirect based on role
           router.push(profile?.role === 'admin' ? '/admin' : '/dashboard');
           return;
         }
         setInvoice(data);
       } catch (error) {
-        console.error(error);
+        console.error("Invoice Error:", error);
       } finally {
         setLoading(false);
       }
@@ -56,7 +57,7 @@ export default function InvoicePage() {
     fetchInvoice();
   }, [user, profile, params?.orderId, router, toast]);
 
-  // Inject HTML into iframe whenever invoice data changes
+  // Inject the HTML into the iframe whenever data loads
   useEffect(() => {
     if (invoice && iframeRef.current) {
       const doc = iframeRef.current.contentDocument;
@@ -77,6 +78,7 @@ export default function InvoicePage() {
   };
 
   const handlePrint = () => {
+    // Print the iframe content, not the whole window
     if (iframeRef.current?.contentWindow) {
       iframeRef.current.contentWindow.print();
     }
@@ -134,13 +136,11 @@ export default function InvoicePage() {
         {/* Invoice Display Area */}
         <Card className="shadow-lg overflow-hidden">
           <CardContent className="p-0 bg-white">
-            {/* Use iframe to isolate styles. 
-               We set a fixed height or use calc to make it look like a page.
-            */}
+            {/* The Magic Iframe: Isolates styles so the invoice looks perfect */}
             <iframe
               ref={iframeRef}
               title="Invoice"
-              className="w-full h-[800px] border-none"
+              className="w-full h-[1100px] border-none"
               sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
             />
           </CardContent>
