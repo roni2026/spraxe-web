@@ -35,10 +35,7 @@ const formatCurrency = (amount: number) => {
 };
 
 export async function getInvoiceData(orderId: string): Promise<InvoiceData | null> {
-  console.log("1. Starting Invoice Fetch for Order:", orderId);
-
-  // STEP 1: Fetch the Order (We need this first)
-  // Note: We removed the 'user:' alias to be safer with Supabase relations
+  // 1. Fetch Order Data (Source of Truth)
   const { data: order, error: orderError } = await supabase
     .from('orders')
     .select(`
@@ -57,33 +54,27 @@ export async function getInvoiceData(orderId: string): Promise<InvoiceData | nul
     .eq('id', orderId)
     .maybeSingle();
 
-  if (orderError) {
-    console.error("Supabase Order Error:", orderError);
-    return null;
-  }
-  
-  if (!order) {
-    console.error("Order not found in database.");
+  if (orderError || !order) {
+    console.error("Order fetch error:", orderError);
     return null;
   }
 
-  // STEP 2: Check if Invoice Exists
+  // 2. Try to fetch existing Invoice
   let { data: invoice, error: invoiceError } = await supabase
     .from('invoices')
     .select('*')
     .eq('order_id', orderId)
     .maybeSingle();
 
-  // STEP 3: Auto-Generate Invoice if missing
+  // 3. AUTO-GENERATE if Invoice is missing
   if (!invoice) {
-    console.log("2. Invoice missing. Generating new one...");
+    console.log("Invoice missing for order. Generating new one...");
     
-    // Create new Invoice Number (e.g., INV-20251215-3212)
+    // Generate a unique invoice number: INV-YYYYMMDD-XXXX
     const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+    const randomSuffix = Math.floor(1000 + Math.random() * 9000); // 4 digit random
     const newInvoiceNumber = `INV-${dateStr}-${randomSuffix}`;
 
-    // Insert into Database
     const { data: newInvoice, error: createError } = await supabase
       .from('invoices')
       .insert({
@@ -93,33 +84,29 @@ export async function getInvoiceData(orderId: string): Promise<InvoiceData | nul
         due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // +7 days
         subtotal: order.subtotal || 0,
         tax_amount: 0,
-        discount_amount: order.discount || 0,
-        total_amount: order.total || 0,
+        discount_amount: order.discount || 0, // Using 'discount' from orders
+        total_amount: order.total || 0,       // Using 'total' from orders
         notes: 'Thank you for shopping with Spraxe!'
       })
       .select()
       .single();
 
     if (createError) {
-      console.error("Failed to create invoice:", createError);
-      // Fallback: Show preview without saving if DB write fails
+      console.error("Failed to auto-create invoice:", createError);
+      // Fallback: Create a temporary object so the user still sees the invoice view
       invoice = {
         invoice_number: newInvoiceNumber,
         issue_date: new Date().toISOString(),
         due_date: new Date().toISOString(),
-        notes: 'Preview Mode'
+        notes: 'Preview (Unsaved)'
       };
     } else {
       invoice = newInvoice;
     }
   }
 
-  // STEP 4: Prepare Final Data
-  // Handle Profile (Array vs Object issue safety)
+  // 4. Prepare Return Data
   const profileData = Array.isArray(order.profiles) ? order.profiles[0] : order.profiles;
-  const customerName = profileData?.full_name || 'Customer';
-  const customerPhone = order.contact_number || profileData?.phone || 'N/A';
-  const customerAddress = order.shipping_address || order.delivery_location || 'Address not provided';
 
   const items = order.items?.map((item: any) => ({
     name: item.product?.name || 'Product',
@@ -133,9 +120,9 @@ export async function getInvoiceData(orderId: string): Promise<InvoiceData | nul
     issueDate: new Date(invoice.issue_date).toLocaleDateString('en-BD'),
     dueDate: new Date(invoice.due_date).toLocaleDateString('en-BD'),
     customer: {
-      name: customerName,
-      phone: customerPhone,
-      address: customerAddress,
+      name: profileData?.full_name || 'Customer',
+      phone: order.contact_number || profileData?.phone || 'N/A',
+      address: order.shipping_address || order.delivery_location || 'Address not provided',
     },
     items: items,
     // Use Order money values as source of truth
@@ -148,8 +135,6 @@ export async function getInvoiceData(orderId: string): Promise<InvoiceData | nul
 }
 
 export function generateInvoiceHTML(data: InvoiceData): string {
-  if (!data) return "<h1>Error: No Data</h1>";
-
   const itemsHTML = data.items.map(item => `
     <tr>
       <td style="padding:10px;border-bottom:1px solid #eee;">${item.name}</td>
