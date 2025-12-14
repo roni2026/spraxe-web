@@ -22,13 +22,13 @@ export interface InvoiceData {
   notes: string;
 }
 
-// Helper to safely convert to number
+// Helper to prevent NaN errors
 const safeNum = (value: any): number => {
   const num = Number(value);
   return isNaN(num) ? 0 : num;
 };
 
-// Helper to format currency
+// Helper for currency formatting (e.g. 1,500.00)
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-BD', {
     minimumFractionDigits: 2,
@@ -37,114 +37,84 @@ const formatCurrency = (amount: number) => {
 };
 
 export async function getInvoiceData(orderId: string): Promise<InvoiceData | null> {
-  // 1. Try to find the specific INVOICE for this order
-  const { data: invoice, error: invoiceError } = await supabase
-    .from('invoices')
+  // 1. Fetch Order Data (Primary Source for Money & Contact)
+  const { data: order, error: orderError } = await supabase
+    .from('orders')
     .select(`
       *,
-      order:orders (
-        *,
-        user:profiles (
-          full_name,
-          email,
-          phone,
-          contact_number
-        ),
-        items:order_items (
-          quantity,
-          price_at_time,
-          product:products (name)
-        )
+      user:profiles (
+        full_name,
+        email,
+        phone,
+        contact_number
+      ),
+      items:order_items (
+        quantity,
+        price_at_time,
+        product:products (name)
       )
     `)
+    .eq('id', orderId)
+    .single();
+
+  if (orderError || !order) {
+    console.error('Order Fetch Error:', orderError);
+    return null;
+  }
+
+  // 2. Fetch Invoice Data (Primary Source for Invoice # & Dates)
+  const { data: invoice } = await supabase
+    .from('invoices')
+    .select('invoice_number, issue_date, due_date, notes')
     .eq('order_id', orderId)
     .maybeSingle();
 
-  // 2. If no invoice exists, fallback to fetching just the ORDER
-  let order: any;
-  let invoiceDetails: any = {};
+  // 3. Construct Data (Hybrid Approach)
+  
+  // Use Invoice Number if exists, otherwise generate fallback
+  const invNumber = invoice?.invoice_number || order.order_number || 'INV-PENDING';
+  const issueDate = invoice?.issue_date ? new Date(invoice.issue_date) : new Date(order.created_at);
+  const dueDate = invoice?.due_date ? new Date(invoice.due_date) : new Date(order.created_at);
 
-  if (invoice) {
-    order = invoice.order;
-    invoiceDetails = {
-      number: invoice.invoice_number,
-      issueDate: invoice.issue_date,
-      dueDate: invoice.due_date,
-      notes: invoice.notes
-    };
-  } else {
-    // Fallback: Fetch order directly if invoice record is missing
-    const { data: orderData } = await supabase
-      .from('orders')
-      .select(`
-        *,
-        user:profiles (
-          full_name,
-          email,
-          phone,
-          contact_number
-        ),
-        items:order_items (
-          quantity,
-          price_at_time,
-          product:products (name)
-        )
-      `)
-      .eq('id', orderId)
-      .single();
-      
-    if (!orderData) return null;
-    order = orderData;
-    invoiceDetails = {
-      number: order.order_number, // Fallback to Order Number
-      issueDate: order.created_at,
-      dueDate: order.created_at,
-      notes: ''
-    };
-  }
+  // Address: Prefer 'shipping_address' (text column), fallback to 'delivery_location'
+  const finalAddress = order.shipping_address || order.delivery_location || 'Address not provided';
 
-  // 3. Process Items
+  // Phone: Prefer Order Contact -> Profile Contact -> Profile Phone
+  const finalPhone = order.contact_number || order.user?.contact_number || order.user?.phone || 'N/A';
+
+  // Process Items
   const items = order.items?.map((item: any) => {
-    const quantity = safeNum(item.quantity) || 1;
-    const price = safeNum(item.price_at_time); 
-    const total = price * quantity;
-
+    const qty = safeNum(item.quantity) || 1;
+    const price = safeNum(item.price_at_time);
     return {
       name: item.product?.name || 'Product',
-      quantity: quantity,
+      quantity: qty,
       price: price,
-      total: total,
+      total: price * qty,
     };
   }) || [];
 
-  // 4. Address Logic
-  let finalAddress = order.shipping_address || order.delivery_location || 'N/A';
-
-  // 5. Phone Logic
-  const finalPhone = order.contact_number || order.user?.contact_number || order.user?.phone || '';
-
   return {
-    invoiceNumber: invoiceDetails.number,
-    issueDate: new Date(invoiceDetails.issueDate).toLocaleDateString('en-BD'),
-    dueDate: new Date(invoiceDetails.dueDate).toLocaleDateString('en-BD'),
+    invoiceNumber: invNumber,
+    issueDate: issueDate.toLocaleDateString('en-BD'),
+    dueDate: dueDate.toLocaleDateString('en-BD'),
     customer: {
-      name: order.user?.full_name || 'Customer',
+      name: order.user?.full_name || 'Valued Customer',
       phone: finalPhone,
       address: finalAddress,
     },
     items: items,
-    
-    // --- CRITICAL FIX: PULL MONEY FROM 'order', NOT 'invoice' ---
+    // --- MONEY COLUMNS FROM ORDERS TABLE ---
     subtotal: safeNum(order.subtotal),
-    discountAmount: safeNum(order.discount),       
-    shippingCost: safeNum(order.shipping_cost),    
-    totalAmount: safeNum(order.total),             
-    // -----------------------------------------------------------
-    
-    notes: invoiceDetails.notes || order.notes || '',
+    discountAmount: safeNum(order.discount),
+    shippingCost: safeNum(order.shipping_cost),
+    totalAmount: safeNum(order.total), 
+    // ---------------------------------------
+    notes: invoice?.notes || order.notes || 'Thank you for shopping with Spraxe!',
   };
 }
 
+// Function to generate the HTML string for display/print
 export function generateInvoiceHTML(data: InvoiceData): string {
   const itemsHTML = data.items
     .map(
@@ -166,51 +136,63 @@ export function generateInvoiceHTML(data: InvoiceData): string {
   <meta charset="utf-8">
   <title>Invoice ${data.invoiceNumber}</title>
   <style>
-    body { font-family: Arial, sans-serif; line-height: 1.6; color: #1f2937; max-width: 800px; margin: 0 auto; padding: 20px; }
-    .header { display: flex; justify-content: space-between; align-items: start; margin-bottom: 40px; padding-bottom: 20px; border-bottom: 3px solid #1e3a8a; }
-    .company-info h1 { color: #1e3a8a; margin: 0 0 10px 0; font-size: 32px; }
-    .invoice-number { font-size: 24px; font-weight: bold; color: #1e3a8a; margin-bottom: 5px; }
-    .invoice-details { text-align: right; }
-    .customer-info { background: #f3f4f6; padding: 20px; border-radius: 8px; margin-bottom: 30px; }
-    .customer-info h3 { margin: 0 0 10px 0; color: #1e3a8a; }
+    body { font-family: 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 40px; }
+    .header { display: flex; justify-content: space-between; margin-bottom: 40px; border-bottom: 3px solid #1e3a8a; padding-bottom: 20px; }
+    .company-name { font-size: 32px; font-weight: 800; color: #1e3a8a; margin: 0; }
+    .company-details { font-size: 14px; color: #666; margin-top: 5px; }
+    .invoice-title { text-align: right; }
+    .invoice-title h2 { font-size: 24px; color: #1e3a8a; margin: 0; }
+    .meta-data { font-size: 14px; color: #666; margin-top: 5px; }
+    
+    .bill-to { background: #f8fafc; padding: 20px; border-radius: 8px; margin-bottom: 30px; border-left: 4px solid #1e3a8a; }
+    .bill-to h3 { margin: 0 0 10px 0; color: #1e3a8a; font-size: 16px; text-transform: uppercase; letter-spacing: 1px; }
+    .bill-to p { margin: 3px 0; font-size: 14px; }
+
     table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
-    th { background: #1e3a8a; color: white; padding: 12px; text-align: left; font-weight: 600; }
-    th:nth-child(2), th:nth-child(3), th:nth-child(4) { text-align: right; }
-    .totals { margin-left: auto; width: 300px; }
-    .totals-row { display: flex; justify-content: space-between; padding: 8px 0; }
-    .totals-row.total { border-top: 2px solid #1e3a8a; margin-top: 8px; padding-top: 12px; font-size: 18px; font-weight: bold; color: #1e3a8a; }
-    .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #e5e7eb; text-align: center; color: #6b7280; font-size: 14px; }
+    th { background: #1e3a8a; color: white; padding: 12px; text-align: left; font-size: 14px; font-weight: 600; text-transform: uppercase; }
+    td { padding: 12px; font-size: 14px; color: #444; }
+    
+    .totals { width: 300px; margin-left: auto; }
+    .row { display: flex; justify-content: space-between; padding: 8px 0; font-size: 14px; }
+    .row.total { border-top: 2px solid #1e3a8a; margin-top: 10px; padding-top: 10px; font-weight: 700; font-size: 18px; color: #1e3a8a; }
+    
+    .footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid #eee; text-align: center; font-size: 12px; color: #999; }
   </style>
 </head>
 <body>
   <div class="header">
-    <div class="company-info">
-      <h1>SPRAXE</h1>
-      <p style="margin: 0;">Vatara, Dhaka, Bangladesh</p>
-      <p style="margin: 0;">Phone: 09638371951</p>
-      <p style="margin: 0;">Email: support.spraxe@gmail.com</p>
+    <div>
+      <h1 class="company-name">SPRAXE</h1>
+      <div class="company-details">
+        Vatara, Dhaka, Bangladesh<br>
+        Phone: 09638371951<br>
+        Email: support.spraxe@gmail.com
+      </div>
     </div>
-    <div class="invoice-details">
-      <div class="invoice-number">${data.invoiceNumber}</div>
-      <p style="margin: 5px 0;">Issue Date: ${data.issueDate}</p>
-      <p style="margin: 5px 0;">Due Date: ${data.dueDate}</p>
+    <div class="invoice-title">
+      <h2>INVOICE</h2>
+      <div class="meta-data">
+        <b>${data.invoiceNumber}</b><br>
+        Date: ${data.issueDate}<br>
+        Due: ${data.dueDate}
+      </div>
     </div>
   </div>
 
-  <div class="customer-info">
-    <h3>Bill To:</h3>
-    <p style="margin: 5px 0;"><strong>${data.customer.name}</strong></p>
-    <p style="margin: 5px 0;">${data.customer.phone}</p>
-    <p style="margin: 5px 0;">${data.customer.address}</p>
+  <div class="bill-to">
+    <h3>Bill To</h3>
+    <p><strong>${data.customer.name}</strong></p>
+    <p>Phone: ${data.customer.phone}</p>
+    <p>Address: ${data.customer.address}</p>
   </div>
 
   <table>
     <thead>
       <tr>
-        <th>Item</th>
-        <th style="text-align: center;">Quantity</th>
-        <th style="text-align: right;">Price</th>
-        <th style="text-align: right;">Total</th>
+        <th width="50%">Item Description</th>
+        <th width="15%" style="text-align: center;">Qty</th>
+        <th width="15%" style="text-align: right;">Price</th>
+        <th width="20%" style="text-align: right;">Total</th>
       </tr>
     </thead>
     <tbody>
@@ -219,38 +201,34 @@ export function generateInvoiceHTML(data: InvoiceData): string {
   </table>
 
   <div class="totals">
-    <div class="totals-row">
-      <span>Subtotal:</span>
+    <div class="row">
+      <span>Subtotal</span>
       <span>৳${formatCurrency(data.subtotal)}</span>
     </div>
-
     ${data.discountAmount > 0 ? `
-    <div class="totals-row">
-      <span>Discount:</span>
+    <div class="row" style="color: #dc2626;">
+      <span>Discount</span>
       <span>-৳${formatCurrency(data.discountAmount)}</span>
     </div>` : ''}
-
     ${data.shippingCost > 0 ? `
-    <div class="totals-row">
-      <span>Shipping:</span>
+    <div class="row">
+      <span>Shipping</span>
       <span>৳${formatCurrency(data.shippingCost)}</span>
     </div>` : ''}
-
-    <div class="totals-row total">
-      <span>Total Amount:</span>
+    <div class="row total">
+      <span>Total</span>
       <span>৳${formatCurrency(data.totalAmount)}</span>
     </div>
   </div>
 
   ${data.notes ? `
-  <div style="background: #fef3c7; padding: 15px; border-radius: 8px; margin-top: 30px; border-left: 4px solid #f59e0b;">
-    <strong>Notes:</strong><br>
-    ${data.notes}
+  <div style="margin-top: 30px; padding: 15px; background: #fffbeb; border-radius: 6px; font-size: 13px; color: #92400e;">
+    <strong>Note:</strong> ${data.notes}
   </div>` : ''}
 
   <div class="footer">
-    <p>Thank you for shopping with Spraxe!</p>
-    <p>For any questions, contact us at support.spraxe@gmail.com or call 09638371951</p>
+    <p>Thank you for your business!</p>
+    <p>Spraxe E-Commerce &bull; www.spraxe.com</p>
   </div>
 </body>
 </html>
