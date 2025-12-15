@@ -269,7 +269,7 @@ export default function HomePage() {
           </div>
 
           {loading ? (
-             <div className="flex justify-center gap-4 overflow-hidden">
+             <div className="flex gap-4 overflow-hidden">
                {[...Array(6)].map((_, i) => (
                  <Skeleton key={i} className="h-24 w-24 rounded-full flex-shrink-0" />
                ))}
@@ -277,14 +277,14 @@ export default function HomePage() {
           ) : (
             <Carousel 
               opts={{ 
-                align: "center", // Changed to center for logic
+                align: "start", // FIXED: "start" ensures you can always scroll left/right naturally
                 dragFree: true,
                 containScroll: "trimSnaps" 
               }} 
               className="w-full"
             >
-              {/* Added justify-center to centering visual alignment */}
-              <CarouselContent className="-ml-3 justify-center">
+              {/* FIXED: Removed justify-center so it doesn't break scrolling */}
+              <CarouselContent className="-ml-3">
                 {categories.map((cat) => (
                   <CarouselItem key={cat.id} className="pl-3 basis-[28%] sm:basis-[20%] md:basis-[14%] lg:basis-[10%]">
                     <Link href={`/products?category=${cat.id}`} className="group block text-center">
@@ -317,7 +317,6 @@ export default function HomePage() {
 
       {/* Best Sellers Section */}
       <section className="py-8 bg-gray-50">
-        {/* Changed 'container' to 'w-full max-w-[1800px]' to match header width */}
         <div className="w-full max-w-[1800px] mx-auto px-4">
           <div className="flex items-center justify-between mb-4">
             <div>
@@ -329,7 +328,6 @@ export default function HomePage() {
             </Link>
           </div>
 
-          {/* Increased grid columns to 8 on 2xl screens for smaller cards */}
           {loading ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3">
               {[...Array(6)].map((_, i) => (
@@ -359,7 +357,6 @@ export default function HomePage() {
 
       {/* Featured Products Section */}
       <section className="py-8 bg-white">
-        {/* Changed 'container' to 'w-full max-w-[1800px]' to match header width */}
         <div className="w-full max-w-[1800px] mx-auto px-4">
           <div className="flex items-center justify-between mb-4">
             <div>
