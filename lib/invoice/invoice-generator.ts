@@ -35,83 +35,123 @@ const formatCurrency = (amount: number) => {
 };
 
 export async function getInvoiceData(orderId: string): Promise<InvoiceData | null> {
-  console.log("Fetching invoice data for:", orderId);
+  console.log("--- STARTING SAFE FETCH for Order:", orderId, "---");
 
-  // 1. Fetch Order (Fixed: Removed 'addresses' join which was causing crashes)
+  // STEP 1: Fetch Only the Order (No Joins, No Crashes)
   const { data: order, error: orderError } = await supabase
     .from('orders')
-    .select(`
-      *,
-      profiles ( full_name, email, phone ),
-      items:order_items (
-        quantity,
-        price_at_time,
-        product:products ( name )
-      )
-    `)
+    .select('*') // Simple select
     .eq('id', orderId)
     .maybeSingle();
 
   if (orderError) {
-    console.error("Supabase Error:", orderError.message);
-    return null;
-  }
-  
-  if (!order) {
-    console.error("Order not found.");
+    console.error("Error fetching order:", orderError);
     return null;
   }
 
-  // 2. Try to fetch Invoice
+  if (!order) {
+    console.error("Order ID not found in 'orders' table.");
+    return null;
+  }
+
+  // STEP 2: Fetch Profile Manually (Using user_id from order)
+  let customerName = 'Guest Customer';
+  let profilePhone = '';
+
+  if (order.user_id) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('full_name, phone')
+      .eq('id', order.user_id)
+      .maybeSingle();
+      
+    if (profile) {
+      customerName = profile.full_name || 'Customer';
+      profilePhone = profile.phone || '';
+    }
+  }
+
+  // STEP 3: Fetch Order Items Manually
+  // Note: We try to fetch product name, but if that link is broken, we fall back safely
+  const { data: orderItems, error: itemsError } = await supabase
+    .from('order_items')
+    .select('quantity, price_at_time, product_id') 
+    .eq('order_id', orderId);
+
+  // STEP 4: Fetch Product Names (Manual Loop to be safe)
+  const itemsWithNames = [];
+  if (orderItems && orderItems.length > 0) {
+    for (const item of orderItems) {
+      let productName = 'Product';
+      if (item.product_id) {
+        const { data: product } = await supabase
+          .from('products')
+          .select('name')
+          .eq('id', item.product_id)
+          .maybeSingle();
+        if (product) productName = product.name;
+      }
+      
+      itemsWithNames.push({
+        name: productName,
+        quantity: safeNum(item.quantity),
+        price: safeNum(item.price_at_time),
+        total: safeNum(item.price_at_time) * safeNum(item.quantity)
+      });
+    }
+  }
+
+  // STEP 5: Check/Create Invoice (Auto-Generate)
   let { data: invoice } = await supabase
     .from('invoices')
     .select('*')
     .eq('order_id', orderId)
     .maybeSingle();
 
-  // 3. GENERATE VIRTUAL INVOICE (Fail-safe)
-  // If invoice row is missing, we create one in memory so the user still sees data.
-  const invNumber = invoice?.invoice_number || order.order_number || 'INV-PREVIEW';
-  const issueDate = invoice?.issue_date ? new Date(invoice.issue_date) : new Date(order.created_at);
-  const dueDate = invoice?.due_date ? new Date(invoice.due_date) : new Date(order.created_at);
+  if (!invoice) {
+    console.log("Generating virtual invoice...");
+    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+    
+    // Attempt to save, but use memory object if it fails (Permissions issue)
+    const newInvoiceObj = {
+      invoice_number: `INV-${dateStr}-${randomSuffix}`,
+      issue_date: new Date().toISOString(),
+      due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      notes: 'Thank you for shopping with Spraxe!'
+    };
 
-  // Handle Profile Data
-  const profile = Array.isArray(order.profiles) ? order.profiles[0] : order.profiles;
-  
-  // Data Mapping (Using Order Table Columns)
-  const customerName = profile?.full_name || 'Customer';
-  const customerPhone = order.contact_number || profile?.phone || 'N/A';
-  const customerAddress = order.shipping_address || order.delivery_location || 'Address not provided';
+    const { data: savedInvoice } = await supabase
+      .from('invoices')
+      .insert({ ...newInvoiceObj, order_id: orderId, total_amount: order.total || 0 })
+      .select()
+      .maybeSingle();
 
-  const items = order.items?.map((item: any) => ({
-    name: item.product?.name || 'Product',
-    quantity: safeNum(item.quantity),
-    price: safeNum(item.price_at_time),
-    total: safeNum(item.price_at_time) * safeNum(item.quantity)
-  })) || [];
+    invoice = savedInvoice || newInvoiceObj;
+  }
 
-  // Return the data object
+  // STEP 6: Final Data Assembly
   return {
-    invoiceNumber: invNumber,
-    issueDate: issueDate.toLocaleDateString('en-BD'),
-    dueDate: dueDate.toLocaleDateString('en-BD'),
+    invoiceNumber: invoice.invoice_number || 'INV-PREVIEW',
+    issueDate: new Date(invoice.issue_date).toLocaleDateString('en-BD'),
+    dueDate: new Date(invoice.due_date).toLocaleDateString('en-BD'),
     customer: {
       name: customerName,
-      phone: customerPhone,
-      address: customerAddress,
+      phone: order.contact_number || profilePhone || 'N/A',
+      address: order.shipping_address || order.delivery_location || 'Address not provided',
     },
-    items: items,
+    items: itemsWithNames,
     subtotal: safeNum(order.subtotal),
     discountAmount: safeNum(order.discount),
     shippingCost: safeNum(order.shipping_cost),
     totalAmount: safeNum(order.total), 
-    notes: invoice?.notes || order.notes || '',
+    notes: invoice.notes || '',
   };
 }
 
 export function generateInvoiceHTML(data: InvoiceData): string {
-  if (!data) return "<h1>No Invoice Data</h1>";
-
+  if (!data) return "<h1>No Data</h1>";
+  
   const itemsHTML = data.items.map(item => `
     <tr>
       <td style="padding:10px;border-bottom:1px solid #eee;">${item.name}</td>
