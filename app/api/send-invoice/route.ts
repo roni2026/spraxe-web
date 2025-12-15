@@ -1,7 +1,6 @@
 // app/api/send-invoice/route.ts
 import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
-// 👇 IMPORTANT: Import the Email version, not the standard version
 import { getInvoiceData, generateEmailInvoiceHTML } from '@/lib/invoice/invoice-generator';
 
 export async function POST(req: Request) {
@@ -20,20 +19,26 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invoice data not found' }, { status: 404 });
     }
 
-    // 2. Generate Email-Safe HTML (Tables instead of Flexbox)
-    // The function generateEmailInvoiceHTML already includes <html>, <body>, etc.
+    // 2. Generate Email HTML
     const emailHtml = generateEmailInvoiceHTML(invoiceData);
 
-    // 3. Configure Transporter
+    // 3. Configure Transporter (Aggressive Render Fixes)
     const transporter = nodemailer.createTransport({
-      host: 'smtp-relay.brevo.com',
+      // Try legacy hostname if main one times out
+      host: 'smtp-relay.sendinblue.com', 
       port: 465,
       secure: true,
       auth: {
-        user: '9d0a00001@smtp-brevo.com', // Brevo Login
+        user: '9d0a00001@smtp-brevo.com',
         pass: process.env.BREVO_SMTP_KEY || process.env.SMTP_PASSWORD,
       },
-      family: 4, // Forces IPv4 (Critical for Render/Brevo timeouts)
+      // NETWORK FIXES
+      family: 4,              // Force IPv4
+      connectionTimeout: 60000, // Wait 60 seconds (Render can be slow)
+      greetingTimeout: 30000,   // Wait 30s for server greeting
+      socketTimeout: 60000,     // Keep socket open longer
+      logger: true,           // Log SMTP traffic to console
+      debug: true             // Include debug info
     } as any);
 
     // 4. Send Email
@@ -41,7 +46,7 @@ export async function POST(req: Request) {
       from: '"Spraxe Support" <9d0a00001@smtp-brevo.com>',
       to: email,
       subject: `Order #${invoiceData.invoiceNumber} Confirmation`,
-      html: emailHtml, // <--- Send the generated HTML directly
+      html: emailHtml,
     });
 
     console.log('Message sent: %s', info.messageId);
