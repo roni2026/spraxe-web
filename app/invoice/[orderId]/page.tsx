@@ -22,7 +22,6 @@ export default function InvoicePage() {
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
-    // 1. Auth check
     if (user === undefined) return;
     if (!user) {
       router.push('/');
@@ -34,26 +33,21 @@ export default function InvoicePage() {
       if (!orderId) return;
 
       try {
-        // 2. Fetch Data (which now auto-generates if missing)
         const data = await getInvoiceData(orderId);
         
         if (!data) {
           toast({
             title: 'Error',
-            description: 'Could not load invoice data.',
+            description: 'Order not found in database.',
             variant: 'destructive',
           });
-          // Redirect logic
-          const redirectPath = profile?.role === 'admin' ? '/admin' : '/dashboard';
-          router.push(redirectPath);
           return;
         }
 
-        // 3. Set Data
         setInvoiceData(data);
         setInvoiceHTML(generateInvoiceHTML(data));
       } catch (error) {
-        console.error("Invoice Error:", error);
+        console.error("Critical Invoice Error:", error);
       } finally {
         setLoading(false);
       }
@@ -90,7 +84,15 @@ export default function InvoicePage() {
     );
   }
 
-  if (!invoiceData) return null;
+  if (!invoiceData) {
+    return (
+      <div className="p-10 text-center">
+        <h2 className="text-xl font-bold text-red-600">Invoice Unavailable</h2>
+        <p className="text-gray-600">Could not retrieve order details.</p>
+        <Button className="mt-4" onClick={() => router.back()}>Go Back</Button>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-8">
@@ -98,11 +100,11 @@ export default function InvoicePage() {
         <div className="flex flex-col md:flex-row items-center justify-between mb-6 gap-4">
           <Button 
             variant="ghost" 
-            onClick={() => router.push(profile?.role === 'admin' ? '/admin' : '/dashboard')}
+            onClick={() => router.back()}
             className="gap-2 self-start md:self-auto"
           >
             <ArrowLeft className="w-4 h-4" />
-            {profile?.role === 'admin' ? 'Back to Orders' : 'Back to Dashboard'}
+            Back
           </Button>
           
           <div className="flex gap-2 w-full md:w-auto">
