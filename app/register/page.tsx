@@ -96,22 +96,27 @@ function RegisterForms({ onLoading, isLoading, onGoogleLogin }: { onLoading: (v:
   const [fullName, setFullName] = useState('');
 
   // -- EMAIL STATE --
-  const [emailStep, setEmailStep] = useState<'details' | 'otp'>('details'); // Track Email Step
+  const [emailStep, setEmailStep] = useState<'details' | 'otp'>('details');
   const [showPassword, setShowPassword] = useState(false);
   const [signUpEmail, setSignUpEmail] = useState('');
   const [signUpPassword, setSignUpPassword] = useState('');
-  const [emailOtp, setEmailOtp] = useState(''); // Store Email OTP
+  const [emailOtp, setEmailOtp] = useState('');
   
   // -- PHONE STATE --
   const [phoneStep, setPhoneStep] = useState<'phone' | 'otp'>('phone');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [otp, setOtp] = useState('');
 
-  // 1. EMAIL SIGN UP HANDLER (Step 1: Send Code)
+  // 1. EMAIL SIGN UP HANDLER
   const handleEmailSignUp = async () => {
     if (!fullName.trim() || !signUpEmail.trim() || !signUpPassword.trim()) {
       toast({ title: 'Missing Information', description: 'Please fill in all fields', variant: 'destructive' });
       return;
+    }
+
+    if (signUpPassword.length < 8) {
+        toast({ title: 'Weak Password', description: 'Password must be at least 8 characters', variant: 'destructive' });
+        return;
     }
 
     onLoading(true);
@@ -129,52 +134,67 @@ function RegisterForms({ onLoading, isLoading, onGoogleLogin }: { onLoading: (v:
       if (error) throw error;
 
       if (data.user) {
-        // If account created successfully, move to OTP step
-        toast({ title: 'Account Created', description: `Please check ${signUpEmail} for your verification code.` });
-        setEmailStep('otp'); 
+        toast({ title: 'Account Created', description: `Code sent to ${signUpEmail}` });
+        setEmailStep('otp');
       }
     } catch (error: any) {
-      toast({ title: 'Registration Failed', description: error.message, variant: 'destructive' });
+        // Check for "User already exists" error
+        if (
+            error.message.includes('already registered') || 
+            error.message.includes('already exists') ||
+            error.status === 422
+        ) {
+            toast({ 
+                title: 'Account Exists', 
+                description: 'You already have an account at Spraxe. Please Sign In.', 
+                variant: 'destructive' 
+            });
+            setTimeout(() => router.push('/login'), 2000); // Redirect to login after 2s
+        } else {
+            toast({ title: 'Registration Failed', description: error.message, variant: 'destructive' });
+        }
     } finally {
       onLoading(false);
     }
   };
 
-  // 1.5 EMAIL VERIFY OTP (Step 2: Verify 8-digit Code)
+  // 1.5 EMAIL VERIFY OTP
   const handleVerifyEmailOTP = async () => {
-    // 8-Digit Validation
     if (!emailOtp.trim() || emailOtp.length !== 8) {
-      toast({ title: 'Invalid Code', description: 'Enter 8-digit code', variant: 'destructive' });
-      return;
+        toast({ title: 'Invalid Code', description: 'Enter 8-digit code', variant: 'destructive' });
+        return;
     }
 
     onLoading(true);
     try {
-      const { data, error } = await supabase.auth.verifyOtp({
-        email: signUpEmail,
-        token: emailOtp,
-        type: 'signup' // Verifying a new registration
-      });
+        const { data, error } = await supabase.auth.verifyOtp({
+            email: signUpEmail,
+            token: emailOtp,
+            type: 'signup'
+        });
 
-      if (error) throw error;
+        if (error) throw error;
 
-      if (data.user) {
-        // Ensure profile name is updated
-        if (fullName) {
-          await supabase.from('profiles').upsert({ id: data.user.id, full_name: fullName }).select();
+        if (data.user) {
+            // FIX: Ensure EMAIL is saved to profiles
+            await supabase.from('profiles').upsert({ 
+                id: data.user.id, 
+                full_name: fullName,
+                email: signUpEmail, // <--- Added Email
+                role: 'customer'
+            });
+
+            toast({ title: 'Success', description: 'Email verified successfully!' });
+            router.push('/');
         }
-
-        toast({ title: 'Success', description: 'Email verified successfully!' });
-        router.push('/'); // Login success
-      }
     } catch (error: any) {
-      toast({ title: 'Verification Failed', description: error.message, variant: 'destructive' });
+        toast({ title: 'Verification Failed', description: error.message, variant: 'destructive' });
     } finally {
-      onLoading(false);
+        onLoading(false);
     }
-  };
+  }
 
-  // 2. PHONE OTP SEND (For Registration)
+  // 2. PHONE OTP SEND
   const handleSendOTP = async () => {
     if (!fullName.trim()) {
         toast({ title: 'Missing Name', description: 'Please enter your full name', variant: 'destructive' });
@@ -209,7 +229,6 @@ function RegisterForms({ onLoading, isLoading, onGoogleLogin }: { onLoading: (v:
 
   // 3. PHONE OTP VERIFY
   const handleVerifyOTP = async () => {
-    // 8-Digit Validation for Phone too
     if (!otp.trim() || otp.length !== 8) {
       toast({ title: 'Invalid OTP', description: 'Enter 8-digit code', variant: 'destructive' });
       return;
@@ -229,8 +248,12 @@ function RegisterForms({ onLoading, isLoading, onGoogleLogin }: { onLoading: (v:
       if (data.user) {
         if (fullName) {
              await supabase.from('profiles')
-                .upsert({ id: data.user.id, full_name: fullName, phone: formattedPhone })
-                .select();
+                .upsert({ 
+                    id: data.user.id, 
+                    full_name: fullName, 
+                    phone: formattedPhone,
+                    role: 'customer'
+                });
         }
         toast({ title: 'Success', description: 'Account verified successfully' });
         router.push('/');
@@ -296,7 +319,7 @@ function RegisterForms({ onLoading, isLoading, onGoogleLogin }: { onLoading: (v:
               <Label htmlFor="otp">Verification Code</Label>
               <Input
                 id="otp"
-                placeholder="00000000"
+                placeholder="12345678"
                 value={otp}
                 onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
                 maxLength={8}
@@ -313,7 +336,7 @@ function RegisterForms({ onLoading, isLoading, onGoogleLogin }: { onLoading: (v:
         )}
       </TabsContent>
 
-      {/* EMAIL TAB (Updated with OTP Step) */}
+      {/* EMAIL TAB */}
       <TabsContent value="email" className="space-y-4">
         {emailStep === 'details' ? (
            <>
@@ -364,14 +387,14 @@ function RegisterForms({ onLoading, isLoading, onGoogleLogin }: { onLoading: (v:
                 {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
             </div>
-            <p className="text-xs text-gray-500">Must be at least 6 characters</p>
+            <p className="text-xs text-gray-500">Must be at least 8 characters</p>
             </div>
             <Button onClick={handleEmailSignUp} disabled={isLoading} className="w-full bg-blue-900 hover:bg-blue-800">
             {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Sign Up'}
             </Button>
            </>
         ) : (
-            // --- NEW EMAIL OTP UI ---
+            // --- EMAIL OTP UI ---
             <div className="space-y-4 animate-in fade-in slide-in-from-right-4">
                 <div className="text-center bg-blue-50 p-3 rounded-md">
                    <p className="text-sm text-blue-900">Enter code sent to <br/><span className="font-bold">{signUpEmail}</span></p>
@@ -380,10 +403,10 @@ function RegisterForms({ onLoading, isLoading, onGoogleLogin }: { onLoading: (v:
                  <Label htmlFor="emailOtp">Verification Code</Label>
                  <Input
                    id="emailOtp"
-                   placeholder="00000000"
+                   placeholder="12345678"
                    value={emailOtp}
                    onChange={(e) => setEmailOtp(e.target.value.replace(/\D/g, ''))}
-                   maxLength={8} // 8 Digit Max Length
+                   maxLength={8}
                    className="text-center text-xl tracking-widest font-bold"
                  />
                </div>
