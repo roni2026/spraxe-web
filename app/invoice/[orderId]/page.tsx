@@ -1,5 +1,5 @@
 // app/invoice/[orderId]/page.tsx
-import { getInvoiceData, generateEmailInvoiceHTML } from '@/lib/invoice/invoice-generator';
+import { getInvoiceData, generateInvoiceHTML } from '@/lib/invoice/invoice-generator'; // <--- CHANGED THIS IMPORT
 import InvoiceViewer from '@/components/invoice/invoice-viewer';
 import { notFound } from 'next/navigation';
 
@@ -10,17 +10,18 @@ interface Props {
 }
 
 export default async function InvoicePage({ params }: Props) {
-  // 1. Fetch data securely on the SERVER (This works with your Admin Key)
+  // 1. Fetch data securely
   const invoiceData = await getInvoiceData(params.orderId);
 
   if (!invoiceData) {
     return notFound();
   }
 
-  // 2. Generate the HTML string
-  const invoiceHTML = generateEmailInvoiceHTML(invoiceData);
+  // 2. Generate the HTML using the WEB layout (Wider, better design)
+  // ❌ WAS: const invoiceHTML = generateEmailInvoiceHTML(invoiceData);
+  const invoiceHTML = generateInvoiceHTML(invoiceData); 
 
-  // 3. Pass data to the Client Component to render the UI (Buttons, Iframe, etc.)
+  // 3. Pass to viewer
   return (
     <InvoiceViewer 
       invoiceHTML={invoiceHTML} 
