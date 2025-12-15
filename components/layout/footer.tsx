@@ -42,7 +42,7 @@ export function Footer() {
               <li className="flex items-start space-x-2">
                 <Mail className="w-4 h-4 mt-0.5 flex-shrink-0" />
                 <a href="mailto:support.spraxe@gmail.com" className="hover:text-blue-400 transition">
-                  support.spraxe@gmail.com
+                  spraxecare@gmail.com
                 </a>
               </li>
               <li className="flex items-start space-x-2">
