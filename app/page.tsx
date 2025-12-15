@@ -133,7 +133,7 @@ export default function HomePage() {
     }
   };
 
-  // --- UPDATED PRODUCT CARD FOR COMPACT LOOK ---
+  // --- UPDATED PRODUCT CARD ---
   const ProductCard = ({ product }: { product: Product }) => (
     <Card className="hover:shadow-lg transition group overflow-hidden h-full flex flex-col border-gray-200">
       <CardContent className="p-0 flex flex-col h-full">
@@ -154,30 +154,29 @@ export default function HomePage() {
           )}
         </div>
 
-        <div className="p-2 space-y-1.5 flex flex-col flex-1">
+        <div className="p-2 space-y-2 flex flex-col flex-1">
           <Link href={`/products/${product.slug}`} className="block">
-            {/* Reduced Title Size */}
-            <h3 className="text-xs font-medium text-gray-900 line-clamp-2 min-h-[2rem] hover:text-blue-900 hover:underline transition leading-tight">
+            {/* UPDATED: Larger Text (text-sm) */}
+            <h3 className="text-sm font-medium text-gray-900 line-clamp-2 min-h-[2.5rem] hover:text-blue-900 hover:underline transition leading-tight">
               {product.name}
             </h3>
           </Link>
 
           <div className="mt-auto space-y-2">
-            {/* Reduced Price Size */}
-            <p className="text-sm md:text-base font-bold text-blue-900">
+            <p className="text-base md:text-lg font-bold text-blue-900">
               ৳{product.price || product.base_price}
             </p>
-            {/* Reduced Button Height (h-7) and Text */}
+            {/* UPDATED: Larger Button (h-9, text-sm) */}
             <Button
               onClick={(e) => {
                 e.stopPropagation();
                 handleAddToCart(product.id, product.name);
               }}
-              className="w-full bg-blue-900 hover:bg-blue-800 h-7 text-[10px] md:text-xs"
+              className="w-full bg-blue-900 hover:bg-blue-800 h-9 text-xs md:text-sm font-medium"
               size="sm"
             >
-              <ShoppingCart className="mr-1.5 h-3 w-3" />
-              Add
+              <ShoppingCart className="mr-2 h-4 w-4" />
+              Add to Cart
             </Button>
           </div>
         </div>
@@ -281,7 +280,7 @@ export default function HomePage() {
           ) : (
             <Carousel 
               opts={{ 
-                align: "start", // FIXED: "start" allows correct scrolling
+                align: "start",
                 dragFree: true,
                 containScroll: "trimSnaps" 
               }} 
@@ -331,7 +330,6 @@ export default function HomePage() {
             </Link>
           </div>
 
-          {/* Tighter gap (gap-2 on mobile, gap-3 on desktop) for compact look */}
           {loading ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-2 md:gap-3">
               {[...Array(6)].map((_, i) => (
