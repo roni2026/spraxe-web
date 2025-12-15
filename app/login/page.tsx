@@ -164,8 +164,9 @@ function AuthForms({ onLoading, isLoading, onGoogleLogin }: { onLoading: (v: boo
 
   // 3. PHONE OTP VERIFY
   const handleVerifyOTP = async () => {
-    if (!otp.trim() || otp.length !== 6) {
-      toast({ title: 'Invalid OTP', description: 'Enter 6-digit code', variant: 'destructive' });
+    // --- CHANGE: Check for 8 digits instead of 6 ---
+    if (!otp.trim() || otp.length !== 8) {
+      toast({ title: 'Invalid OTP', description: 'Enter 8-digit code', variant: 'destructive' });
       return;
     }
 
@@ -237,10 +238,10 @@ function AuthForms({ onLoading, isLoading, onGoogleLogin }: { onLoading: (v: boo
               <Label htmlFor="otp">Verification Code</Label>
               <Input
                 id="otp"
-                placeholder="000000"
+                placeholder="00000000" // --- CHANGE: 8 zeros ---
                 value={otp}
                 onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
-                maxLength={6}
+                maxLength={8} // --- CHANGE: Max length 8 ---
                 className="text-center text-xl tracking-widest font-bold"
               />
             </div>
@@ -294,9 +295,9 @@ function AuthForms({ onLoading, isLoading, onGoogleLogin }: { onLoading: (v: boo
           {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Sign In'}
         </Button>
         <div className="text-center text-sm">
-             <Link href="/register" className="text-blue-900 hover:underline">
-               Don&apos;t have an account? Sign Up
-             </Link>
+              <Link href="/register" className="text-blue-900 hover:underline">
+                Don&apos;t have an account? Sign Up
+              </Link>
         </div>
       </TabsContent>
 
