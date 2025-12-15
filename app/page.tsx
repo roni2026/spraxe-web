@@ -76,7 +76,6 @@ export default function HomePage() {
           .from('categories')
           .select('*')
           .eq('is_active', true)
-          // We fetch more initially to ensure we find the specific ones you want
           .limit(50), 
         supabase
           .from('featured_images')
@@ -88,9 +87,8 @@ export default function HomePage() {
       if (productsRes.data) setProducts(productsRes.data);
       if (bestSellersRes.data) setBestSellers(bestSellersRes.data);
       
-      // 2. FILTER CATEGORIES STRICTLY BASED ON YOUR LIST
+      // Filter Categories
       if (categoriesRes.data) {
-        // Create a map for sorting based on your target list order
         const sortMap = new Map(TARGET_CATEGORIES.map((name, i) => [name.toLowerCase(), i]));
         
         const filteredCategories = categoriesRes.data
@@ -135,11 +133,9 @@ export default function HomePage() {
     }
   };
 
-  // 3. UPDATED PRODUCT CARD: SMALLER STYLES
   const ProductCard = ({ product }: { product: Product }) => (
     <Card className="hover:shadow-lg transition group overflow-hidden h-full flex flex-col border-gray-200">
       <CardContent className="p-0 flex flex-col h-full">
-        {/* Reduced height of image container slightly relative to text */}
         <div 
           className="aspect-square bg-gray-50 overflow-hidden relative cursor-zoom-in"
           onClick={() => setViewingProduct(product)}
@@ -157,21 +153,17 @@ export default function HomePage() {
           )}
         </div>
 
-        {/* Reduced padding from p-3 to p-2 */}
         <div className="p-2 space-y-1.5 flex flex-col flex-1">
           <Link href={`/products/${product.slug}`} className="block">
-            {/* Reduced font size: text-sm to text-xs md:text-sm */}
             <h3 className="text-xs md:text-sm font-medium text-gray-900 line-clamp-2 min-h-[2rem] hover:text-blue-900 hover:underline transition leading-tight">
               {product.name}
             </h3>
           </Link>
 
           <div className="mt-auto space-y-2">
-            {/* Reduced font size: text-lg to text-base md:text-lg */}
             <p className="text-base md:text-lg font-bold text-blue-900">
               ৳{product.price || product.base_price}
             </p>
-            {/* Reduced button height: h-9 to h-8 and text size */}
             <Button
               onClick={(e) => {
                 e.stopPropagation();
@@ -277,7 +269,7 @@ export default function HomePage() {
           </div>
 
           {loading ? (
-             <div className="flex gap-4 overflow-hidden">
+             <div className="flex justify-center gap-4 overflow-hidden">
                {[...Array(6)].map((_, i) => (
                  <Skeleton key={i} className="h-24 w-24 rounded-full flex-shrink-0" />
                ))}
@@ -285,13 +277,14 @@ export default function HomePage() {
           ) : (
             <Carousel 
               opts={{ 
-                align: "start", 
+                align: "center", // Changed to center for logic
                 dragFree: true,
-                containScroll: "trimSnaps" // Helps prevents scrolling too far into empty space
+                containScroll: "trimSnaps" 
               }} 
               className="w-full"
             >
-              <CarouselContent className="-ml-3">
+              {/* Added justify-center to centering visual alignment */}
+              <CarouselContent className="-ml-3 justify-center">
                 {categories.map((cat) => (
                   <CarouselItem key={cat.id} className="pl-3 basis-[28%] sm:basis-[20%] md:basis-[14%] lg:basis-[10%]">
                     <Link href={`/products?category=${cat.id}`} className="group block text-center">
@@ -324,7 +317,8 @@ export default function HomePage() {
 
       {/* Best Sellers Section */}
       <section className="py-8 bg-gray-50">
-        <div className="container mx-auto px-4">
+        {/* Changed 'container' to 'w-full max-w-[1800px]' to match header width */}
+        <div className="w-full max-w-[1800px] mx-auto px-4">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="text-xl md:text-2xl font-bold text-gray-900">Best Sellers</h2>
@@ -335,9 +329,9 @@ export default function HomePage() {
             </Link>
           </div>
 
-          {/* UPDATED GRID: Added xl:grid-cols-7 and tightened gap slightly */}
+          {/* Increased grid columns to 8 on 2xl screens for smaller cards */}
           {loading ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-3 md:gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3">
               {[...Array(6)].map((_, i) => (
                 <Card key={i}>
                   <CardContent className="p-2">
@@ -354,7 +348,7 @@ export default function HomePage() {
               <p className="text-gray-600 text-sm">No best sellers yet</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-3 md:gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3">
               {bestSellers.map((product) => (
                 <ProductCard key={product.id} product={product} />
               ))}
@@ -365,7 +359,8 @@ export default function HomePage() {
 
       {/* Featured Products Section */}
       <section className="py-8 bg-white">
-        <div className="container mx-auto px-4">
+        {/* Changed 'container' to 'w-full max-w-[1800px]' to match header width */}
+        <div className="w-full max-w-[1800px] mx-auto px-4">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="text-xl md:text-2xl font-bold text-gray-900">Featured Products</h2>
@@ -376,9 +371,8 @@ export default function HomePage() {
             </Link>
           </div>
 
-          {/* UPDATED GRID */}
           {loading ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-3 md:gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3">
               {[...Array(12)].map((_, i) => (
                 <Card key={i}>
                   <CardContent className="p-2">
@@ -396,7 +390,7 @@ export default function HomePage() {
               <p className="text-gray-600 mb-4">Products will appear here once they are added.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-3 md:gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3">
               {products.map((product) => (
                 <ProductCard key={product.id} product={product} />
               ))}
