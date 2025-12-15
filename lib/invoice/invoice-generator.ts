@@ -1,6 +1,5 @@
 // lib/invoice/invoice-generator.ts
 
-// 👇 KEY CHANGE: Import the Admin client, NOT the standard client
 import { supabaseAdmin } from '@/lib/supabase/admin';
 
 export interface InvoiceData {
@@ -39,20 +38,16 @@ const formatCurrency = (amount: number) => {
 
 export async function getInvoiceData(orderId: string): Promise<InvoiceData | null> {
   console.log("--- GENERATING INVOICE (ADMIN MODE) ---");
-  console.log("Fetching invoice for Order ID:", orderId);
 
-  // STEP 1: Fetch Order & Profile (Using supabaseAdmin to bypass RLS)
+  // STEP 1: Fetch Order & Profile
   const { data: orderData, error: orderError } = await supabaseAdmin
     .from('orders')
     .select(`*, profiles ( full_name, email, phone )`)
     .eq('id', orderId)
     .maybeSingle();
 
-  if (orderError) {
-    console.error("Database Error (Orders):", orderError.message);
-  }
+  if (orderError) console.error("Database Error:", orderError.message);
 
-  // Fallback object (only used if order really doesn't exist)
   const order = orderData || {
     id: orderId,
     order_number: 'ORD-MISSING',
@@ -65,17 +60,12 @@ export async function getInvoiceData(orderId: string): Promise<InvoiceData | nul
     shipping_address: ''
   };
 
-  // STEP 2: Fetch Items (Using supabaseAdmin)
-  const { data: orderItems, error: itemsError } = await supabaseAdmin
+  // STEP 2: Fetch Items
+  const { data: orderItems } = await supabaseAdmin
     .from('order_items')
     .select('*') 
     .eq('order_id', orderId);
 
-  if (itemsError) {
-    console.error("Database Error (Items):", itemsError.message);
-  }
-
-  // MAPPING LOGIC
   const items = orderItems?.map((item: any) => ({
     name: item.product_name || item.name || item.title || 'Product',
     quantity: safeNum(item.quantity),
@@ -83,14 +73,13 @@ export async function getInvoiceData(orderId: string): Promise<InvoiceData | nul
     total: safeNum(item.total_price || item.total)
   })) || [];
 
-  // Calculate totals if order data was missing/null but items were found
   if (!orderData && items.length > 0) {
     const calculatedSubtotal = items.reduce((acc, item) => acc + item.total, 0);
     order.subtotal = calculatedSubtotal;
     order.total = calculatedSubtotal;
   }
 
-  // STEP 3: Fetch or Create Invoice Record (Using supabaseAdmin)
+  // STEP 3: Fetch Invoice Record
   let { data: invoice } = await supabaseAdmin
     .from('invoices')
     .select('*')
@@ -100,11 +89,9 @@ export async function getInvoiceData(orderId: string): Promise<InvoiceData | nul
   if (!invoice) {
     const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-    const newInvoiceNumber = `INV-${dateStr}-${randomSuffix}`;
-
     const newInvoiceObj = {
       order_id: orderId,
-      invoice_number: newInvoiceNumber,
+      invoice_number: `INV-${dateStr}-${randomSuffix}`,
       issue_date: new Date().toISOString(),
       due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       subtotal: order.subtotal,
@@ -121,21 +108,16 @@ export async function getInvoiceData(orderId: string): Promise<InvoiceData | nul
     invoice = saved || newInvoiceObj;
   }
 
-  // STEP 4: Customer Details Mapping
   const profile = order.profiles && (Array.isArray(order.profiles) ? order.profiles[0] : order.profiles);
   
-  const customerName = profile?.full_name || order.customer_name || 'Valued Customer';
-  const customerPhone = order.contact_number || order.phone || profile?.phone || 'N/A';
-  const customerAddress = order.shipping_address || order.address || order.delivery_location || 'Address not provided';
-
   return {
     invoiceNumber: invoice.invoice_number,
     issueDate: new Date(invoice.issue_date).toLocaleDateString('en-BD'),
     dueDate: new Date(invoice.due_date).toLocaleDateString('en-BD'),
     customer: {
-      name: customerName,
-      phone: customerPhone,
-      address: customerAddress,
+      name: profile?.full_name || order.customer_name || 'Valued Customer',
+      phone: order.contact_number || order.phone || profile?.phone || 'N/A',
+      address: order.shipping_address || order.address || order.delivery_location || 'Address not provided',
     },
     items: items,
     subtotal: safeNum(order.subtotal),
@@ -147,7 +129,7 @@ export async function getInvoiceData(orderId: string): Promise<InvoiceData | nul
 }
 
 // =======================================================
-// 1. WEB VERSION (For Dashboard View - Uses Flexbox)
+// 1. WEB/PDF VERSION (Wider Layout)
 // =======================================================
 export function generateInvoiceHTML(data: InvoiceData): string {
   if (!data) return "<h1>No Data</h1>";
@@ -166,20 +148,29 @@ export function generateInvoiceHTML(data: InvoiceData): string {
     <html>
     <head>
       <style>
-        body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #333; max-width: 800px; margin: 0 auto; }
+        /* Updated Padding: Less space at top (20px) to push logo up */
+        body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 20px 40px; color: #333; max-width: 800px; margin: 0 auto; }
+        
         .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #1e3a8a; padding-bottom: 20px; margin-bottom: 30px; }
-        .logo-img { max-width: 160px; height: auto; display: block; margin-bottom: 5px; } 
-        .subtitle { font-size: 14px; color: #666; margin-top: 5px; }
+        
+        /* Logo Styles */
+        .logo-img { max-width: 180px; height: auto; display: block; margin: 0 0 5px 0; }
+        
+        .subtitle { font-size: 14px; color: #666; margin-top: 2px; }
         .invoice-box { text-align: right; }
         .invoice-label { font-size: 24px; font-weight: bold; color: #1e3a8a; }
+        
         .info-card { background: #f8fafc; padding: 20px; border-radius: 8px; margin-bottom: 30px; border-left: 4px solid #1e3a8a; }
         .info-label { font-size: 12px; text-transform: uppercase; color: #64748b; font-weight: bold; margin-bottom: 5px; }
         .info-value { font-size: 16px; font-weight: 500; }
+        
         table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
         th { background: #f1f5f9; padding: 12px; text-align: left; font-size: 12px; text-transform: uppercase; color: #475569; }
+        
         .totals { width: 300px; margin-left: auto; }
         .row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; }
         .total-row { display: flex; justify-content: space-between; padding: 12px 0; border-top: 2px solid #1e3a8a; margin-top: 10px; font-weight: bold; font-size: 18px; color: #1e3a8a; }
+        
         .footer { margin-top: 50px; text-align: center; font-size: 12px; color: #94a3b8; border-top: 1px solid #eee; padding-top: 20px; }
       </style>
     </head>
@@ -230,7 +221,7 @@ export function generateInvoiceHTML(data: InvoiceData): string {
 }
 
 // =======================================================
-// 2. EMAIL VERSION (Uses Tables for Outlook/Gmail support)
+// 2. EMAIL VERSION (Narrower Layout)
 // =======================================================
 export function generateEmailInvoiceHTML(data: InvoiceData): string {
   if (!data) return "<h1>No Data</h1>";
@@ -260,11 +251,11 @@ export function generateEmailInvoiceHTML(data: InvoiceData): string {
             <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; background-color: #ffffff; border-radius: 8px; overflow: hidden;">
               
               <tr>
-                <td style="padding: 30px 30px 0 30px; border-bottom: 3px solid #1e3a8a;">
+                <td style="padding: 20px 30px 0 30px; border-bottom: 3px solid #1e3a8a;">
                   <table width="100%" border="0" cellspacing="0" cellpadding="0">
                     <tr>
                       <td valign="top" style="padding-bottom: 20px;">
-                        <img src="https://kybgrsqqvejbvjediowo.supabase.co/storage/v1/object/public/category/spraxe.png" alt="SPRAXE" width="150" style="display: block; border: 0; outline: none; text-decoration: none; margin-bottom: 10px;" />
+                        <img src="https://kybgrsqqvejbvjediowo.supabase.co/storage/v1/object/public/category/spraxe.png" alt="SPRAXE" width="160" style="display: block; border: 0; outline: none; text-decoration: none; margin-bottom: 10px;" />
                         <p style="margin: 5px 0 0 0; color: #666; font-size: 14px;">Gazipur, Dhaka, Bangladesh</p>
                         <p style="margin: 0; color: #666; font-size: 14px;">09638371951</p>
                       </td>
