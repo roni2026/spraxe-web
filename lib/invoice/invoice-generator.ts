@@ -129,7 +129,7 @@ export async function getInvoiceData(orderId: string): Promise<InvoiceData | nul
 }
 
 // =======================================================
-// 1. WEB/PDF VERSION (Wider Layout)
+// 1. WEB/PDF VERSION (Smaller Logo)
 // =======================================================
 export function generateInvoiceHTML(data: InvoiceData): string {
   if (!data) return "<h1>No Data</h1>";
@@ -148,29 +148,23 @@ export function generateInvoiceHTML(data: InvoiceData): string {
     <html>
     <head>
       <style>
-        /* Updated Padding: Less space at top (20px) to push logo up */
         body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 20px 40px; color: #333; max-width: 800px; margin: 0 auto; }
-        
         .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #1e3a8a; padding-bottom: 20px; margin-bottom: 30px; }
         
-        /* Logo Styles */
-        .logo-img { max-width: 180px; height: auto; display: block; margin: 0 0 5px 0; }
+        /* UPDATED LOGO SIZE: 90px (50% of original 180px) */
+        .logo-img { max-width: 90px; height: auto; display: block; margin: 0 0 5px 0; }
         
         .subtitle { font-size: 14px; color: #666; margin-top: 2px; }
         .invoice-box { text-align: right; }
         .invoice-label { font-size: 24px; font-weight: bold; color: #1e3a8a; }
-        
         .info-card { background: #f8fafc; padding: 20px; border-radius: 8px; margin-bottom: 30px; border-left: 4px solid #1e3a8a; }
         .info-label { font-size: 12px; text-transform: uppercase; color: #64748b; font-weight: bold; margin-bottom: 5px; }
         .info-value { font-size: 16px; font-weight: 500; }
-        
         table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
         th { background: #f1f5f9; padding: 12px; text-align: left; font-size: 12px; text-transform: uppercase; color: #475569; }
-        
         .totals { width: 300px; margin-left: auto; }
         .row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; }
         .total-row { display: flex; justify-content: space-between; padding: 12px 0; border-top: 2px solid #1e3a8a; margin-top: 10px; font-weight: bold; font-size: 18px; color: #1e3a8a; }
-        
         .footer { margin-top: 50px; text-align: center; font-size: 12px; color: #94a3b8; border-top: 1px solid #eee; padding-top: 20px; }
       </style>
     </head>
@@ -221,7 +215,7 @@ export function generateInvoiceHTML(data: InvoiceData): string {
 }
 
 // =======================================================
-// 2. EMAIL VERSION (Narrower Layout)
+// 2. EMAIL VERSION (Unchanged - Small Logo)
 // =======================================================
 export function generateEmailInvoiceHTML(data: InvoiceData): string {
   if (!data) return "<h1>No Data</h1>";
@@ -255,7 +249,7 @@ export function generateEmailInvoiceHTML(data: InvoiceData): string {
                   <table width="100%" border="0" cellspacing="0" cellpadding="0">
                     <tr>
                       <td valign="top" style="padding-bottom: 20px;">
-                        <img src="https://kybgrsqqvejbvjediowo.supabase.co/storage/v1/object/public/category/spraxe.png" alt="SPRAXE" width="160" style="display: block; border: 0; outline: none; text-decoration: none; margin-bottom: 10px;" />
+                        <img src="https://kybgrsqqvejbvjediowo.supabase.co/storage/v1/object/public/category/spraxe.png" alt="SPRAXE" width="65" style="display: block; border: 0; outline: none; text-decoration: none; margin-bottom: 10px;" />
                         <p style="margin: 5px 0 0 0; color: #666; font-size: 14px;">Gazipur, Dhaka, Bangladesh</p>
                         <p style="margin: 0; color: #666; font-size: 14px;">09638371951</p>
                       </td>
