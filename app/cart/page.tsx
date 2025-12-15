@@ -10,13 +10,12 @@ import { Header } from '@/components/layout/header';
 import { Footer } from '@/components/layout/footer';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { Trash2, Phone, MapPin, Truck, Home, Pencil, CheckCircle2 } from 'lucide-react';
+import { Trash2, Phone, MapPin, Truck, Home, AlertCircle, ExternalLink } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const SHIPPING_INSIDE_DHAKA = 60;
 const SHIPPING_OUTSIDE_DHAKA = 120;
@@ -28,62 +27,34 @@ export default function CartPage() {
   const { toast } = useToast();
 
   const [deliveryLocation, setDeliveryLocation] = useState<'inside' | 'outside'>('inside');
-  const [manualAddress, setManualAddress] = useState('');
-  const [manualPhone, setManualPhone] = useState('');
-  const [isSavingPhone, setIsSavingPhone] = useState(false);
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
 
-  // Sync state with profile (fallback)
   useEffect(() => {
-    if (profile) {
-      if (profile.phone) setManualPhone(profile.phone);
-      // @ts-ignore
-      if (profile.address) setManualAddress(profile.address);
-    }
-  }, [profile]);
+    if (user) refreshProfile();
+  }, [user]);
 
   const shippingCost = deliveryLocation === 'inside' ? SHIPPING_INSIDE_DHAKA : SHIPPING_OUTSIDE_DHAKA;
   const total = subtotal + shippingCost;
 
-  const handleSavePhone = async () => {
-    if (!user) return;
-    if (manualPhone.length < 11) {
-      toast({ title: "Invalid Phone", description: "Phone number must be at least 11 digits.", variant: "destructive" });
-      return;
-    }
-    setIsSavingPhone(true);
-    const { error } = await supabase.from('profiles').update({ phone: manualPhone }).eq('id', user.id);
-    if (error) {
-      toast({ title: "Error", description: "Failed to save phone number.", variant: "destructive" });
-    } else {
-      toast({ title: "Success", description: "Phone number saved successfully." });
-      await refreshProfile(); 
-    }
-    setIsSavingPhone(false);
-  };
-
   const handleConfirmOrder = async () => {
     if (!user) return router.push('/login');
     
-    // Determine final data (Profile > Manual)
-    const finalPhone = profile?.phone || manualPhone;
+    const finalPhone = profile?.phone;
     // @ts-ignore
-    const finalAddress = profile?.address || manualAddress;
+    const finalAddress = profile?.address;
 
-    // Validation
     if (!finalPhone) {
-      toast({ title: "Phone Required", description: "Please add a contact number.", variant: "destructive" });
+      toast({ title: "Phone Missing", description: "Please add your phone number in your Profile.", variant: "destructive" });
       return;
     }
-    if (!finalAddress || !finalAddress.trim()) {
-      toast({ title: "Address Required", description: "Please add a delivery address.", variant: "destructive" });
+    if (!finalAddress) {
+      toast({ title: "Address Missing", description: "Please add your address in your Profile.", variant: "destructive" });
       return;
     }
 
     setIsPlacingOrder(true);
 
     try {
-      // Generate Order Number
       const orderNumber = `ORD-${Date.now().toString().slice(-8)}`;
 
       // Create Order
@@ -103,14 +74,13 @@ export default function CartPage() {
           shipping_cost: shippingCost,
           payment_method: 'Cash on Delivery',
           contact_number: finalPhone,
-          order_number: orderNumber // Using generated order number
+          order_number: orderNumber 
         })
         .select()
         .single();
 
       if (orderError) throw orderError;
 
-      // Create Order Items
       const orderItems = items.map(item => ({
         order_id: order.id,
         product_id: item.product_id,
@@ -124,8 +94,15 @@ export default function CartPage() {
       const { error: itemsError } = await supabase.from('order_items').insert(orderItems);
       if (itemsError) throw itemsError;
 
-      // Success
       await clearCart();
+      
+      // Trigger Invoice Email
+      fetch('/api/send-invoice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: order.id, email: user.email }),
+      });
+
       toast({ title: "Order Confirmed!", description: `Order #${orderNumber} placed successfully.` });
       router.push('/dashboard'); 
 
@@ -137,7 +114,6 @@ export default function CartPage() {
     }
   };
 
-  // Loading State (Prevents Flash/Redirect Loop)
   if (authLoading || cartLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -149,6 +125,7 @@ export default function CartPage() {
   const hasPhone = !!profile?.phone;
   // @ts-ignore
   const hasAddress = !!profile?.address;
+  const isProfileComplete = hasPhone && hasAddress;
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
@@ -165,7 +142,7 @@ export default function CartPage() {
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             
-            {/* --- LEFT SIDE: CART ITEMS ONLY --- */}
+            {/* --- LEFT SIDE: CART ITEMS --- */}
             <div className="lg:col-span-2 space-y-6">
               <Card>
                 <CardHeader>
@@ -201,97 +178,108 @@ export default function CartPage() {
               </Card>
             </div>
 
-            {/* --- RIGHT SIDE: ORDER SUMMARY (INCLUDES PHONE & ADDRESS) --- */}
+            {/* --- RIGHT SIDE: ORDER SUMMARY --- */}
             <div className="lg:col-span-1">
               <Card className="sticky top-20 shadow-lg border-blue-100">
                 <CardContent className="p-6 space-y-6">
                   <h2 className="text-lg font-bold text-gray-900">Order Summary</h2>
 
                   {/* 1. CONTACT INFO */}
-                  <div>
+                  <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
                     <div className="flex items-center justify-between mb-2">
-                      <Label className="flex items-center gap-2 text-gray-600">
-                        <Phone className="h-4 w-4" /> Contact Number
+                      <Label className="flex items-center gap-2 text-gray-600 font-medium">
+                        <Phone className="h-4 w-4" /> Phone Number
                       </Label>
                       {hasPhone && (
-                        <Link href="/dashboard" className="text-xs text-blue-600 hover:underline">
-                          Edit
+                        <Link href="/dashboard" className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+                          <ExternalLink className="h-3 w-3" /> Change
                         </Link>
                       )}
                     </div>
                     {hasPhone ? (
-                      <div className="text-sm font-medium text-gray-900 bg-gray-50 p-2 rounded border flex items-center gap-2">
-                        <CheckCircle2 className="h-4 w-4 text-green-600" />
-                        {profile.phone}
-                      </div>
+                      <div className="text-sm font-bold text-gray-900 pl-6">{profile.phone}</div>
                     ) : (
-                      <div className="flex gap-2">
-                        <Input 
-                          placeholder="01XXXXXXXXX" 
-                          value={manualPhone}
-                          onChange={(e) => setManualPhone(e.target.value)}
-                          className="bg-white h-9"
-                        />
-                        <Button size="sm" onClick={handleSavePhone} disabled={isSavingPhone}>
-                          Save
-                        </Button>
+                      <div className="text-sm text-red-600 pl-6 flex flex-col gap-2">
+                        <span>Phone number missing.</span>
+                        <Link href="/dashboard">
+                           <Button size="sm" variant="outline" className="w-full h-8 text-xs border-red-200 bg-red-50 hover:bg-red-100 text-red-700">Add Phone in Profile</Button>
+                        </Link>
                       </div>
                     )}
                   </div>
 
-                  {/* 2. DELIVERY ADDRESS */}
-                  <div>
+                  {/* 2. ADDRESS INFO */}
+                  <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
                     <div className="flex items-center justify-between mb-2">
-                      <Label className="flex items-center gap-2 text-gray-600">
+                      <Label className="flex items-center gap-2 text-gray-600 font-medium">
                         <Home className="h-4 w-4" /> Delivery Address
                       </Label>
                       {hasAddress && (
-                        <Link href="/dashboard" className="text-xs text-blue-600 hover:underline">
-                          Edit
-                        </Link>
+                         <Link href="/dashboard" className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+                           <ExternalLink className="h-3 w-3" /> Change
+                         </Link>
                       )}
                     </div>
                     {hasAddress ? (
-                      <div className="text-sm font-medium text-gray-900 bg-gray-50 p-2 rounded border whitespace-pre-wrap">
+                      <div className="text-sm font-medium text-gray-900 pl-6 whitespace-pre-wrap leading-relaxed">
                         {/* @ts-ignore */}
                         {profile.address}
                       </div>
                     ) : (
-                      <div className="space-y-2">
-                        <Textarea 
-                          placeholder="House, Road, City..." 
-                          value={manualAddress}
-                          onChange={(e) => setManualAddress(e.target.value)}
-                          className="bg-white min-h-[60px]"
-                        />
-                        <Link href="/dashboard" className="text-xs text-blue-600 hover:underline block text-right">
-                          Add details in Profile
+                      <div className="text-sm text-red-600 pl-6 flex flex-col gap-2">
+                        <span>Address missing.</span>
+                        <Link href="/dashboard">
+                           <Button size="sm" variant="outline" className="w-full h-8 text-xs border-red-200 bg-red-50 hover:bg-red-100 text-red-700">Add Address in Profile</Button>
                         </Link>
                       </div>
                     )}
                   </div>
 
+                  {!isProfileComplete && (
+                    <Alert variant="destructive" className="py-2">
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertTitle>Profile Incomplete</AlertTitle>
+                      <AlertDescription className="text-xs">
+                        You must update your profile with a Phone Number and Address to place an order.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
                   <Separator />
 
-                  {/* 3. SHIPPING AREA */}
+                  {/* 3. SHIPPING & TOTALS (FIXED CLICKABLE AREA) */}
                   <div className="space-y-3">
                     <Label className="flex items-center gap-2 text-gray-600">
                       <MapPin className="h-4 w-4" /> Shipping Area
                     </Label>
+                    
                     <RadioGroup 
                       value={deliveryLocation} 
                       onValueChange={(val: 'inside' | 'outside') => setDeliveryLocation(val)}
                       className="flex flex-col gap-2"
                     >
-                      <div className={`flex items-center justify-between p-2 px-3 border rounded-lg cursor-pointer text-sm ${deliveryLocation === 'inside' ? 'border-blue-600 bg-blue-50 ring-1 ring-blue-600' : ''}`}>
-                        <div className="flex items-center space-x-2">
+                      {/* OPTION 1: INSIDE DHAKA */}
+                      <div 
+                        onClick={() => setDeliveryLocation('inside')} // Makes entire box clickable
+                        className={`flex items-center justify-between p-2 px-3 border rounded-lg cursor-pointer transition-all text-sm ${
+                          deliveryLocation === 'inside' ? 'border-blue-600 bg-blue-50 ring-1 ring-blue-600 shadow-sm' : 'hover:bg-gray-50'
+                        }`}
+                      >
+                        <div className="flex items-center space-x-2 pointer-events-none">
                           <RadioGroupItem value="inside" id="inside" />
                           <Label htmlFor="inside" className="cursor-pointer">Inside Dhaka</Label>
                         </div>
                         <span className="font-bold">৳{SHIPPING_INSIDE_DHAKA}</span>
                       </div>
-                      <div className={`flex items-center justify-between p-2 px-3 border rounded-lg cursor-pointer text-sm ${deliveryLocation === 'outside' ? 'border-blue-600 bg-blue-50 ring-1 ring-blue-600' : ''}`}>
-                        <div className="flex items-center space-x-2">
+
+                      {/* OPTION 2: OUTSIDE DHAKA */}
+                      <div 
+                        onClick={() => setDeliveryLocation('outside')} // Makes entire box clickable
+                        className={`flex items-center justify-between p-2 px-3 border rounded-lg cursor-pointer transition-all text-sm ${
+                          deliveryLocation === 'outside' ? 'border-blue-600 bg-blue-50 ring-1 ring-blue-600 shadow-sm' : 'hover:bg-gray-50'
+                        }`}
+                      >
+                        <div className="flex items-center space-x-2 pointer-events-none">
                           <RadioGroupItem value="outside" id="outside" />
                           <Label htmlFor="outside" className="cursor-pointer">Outside Dhaka</Label>
                         </div>
@@ -300,7 +288,6 @@ export default function CartPage() {
                     </RadioGroup>
                   </div>
 
-                  {/* 4. TOTALS */}
                   <div className="space-y-2 text-sm pt-2">
                     <div className="flex justify-between">
                       <span className="text-gray-600">Subtotal</span>
@@ -317,11 +304,11 @@ export default function CartPage() {
                     </div>
                   </div>
 
-                  {/* 5. CONFIRM BUTTON */}
+                  {/* 4. CONFIRM BUTTON */}
                   <Button 
                     className="w-full bg-blue-900 hover:bg-blue-800 h-12 text-lg shadow-md" 
                     onClick={handleConfirmOrder}
-                    disabled={isPlacingOrder || !user || !hasPhone || (!hasAddress && !manualAddress)} 
+                    disabled={isPlacingOrder || !user || !isProfileComplete} 
                   >
                     {isPlacingOrder ? 'Processing...' : 'Confirm Order'}
                   </Button>
