@@ -35,10 +35,9 @@ const formatCurrency = (amount: number) => {
 };
 
 export async function getInvoiceData(orderId: string): Promise<InvoiceData | null> {
-  console.log("Fetching invoice for:", orderId);
+  console.log("Fetching invoice data for:", orderId);
 
-  // 1. Fetch Order (The critical data source)
-  // FIX: Removed 'addresses' join because your CSV shows address is text in 'orders'
+  // 1. Fetch Order (Fixed: Removed 'addresses' join which was causing crashes)
   const { data: order, error: orderError } = await supabase
     .from('orders')
     .select(`
@@ -54,35 +53,34 @@ export async function getInvoiceData(orderId: string): Promise<InvoiceData | nul
     .maybeSingle();
 
   if (orderError) {
-    console.error("Supabase Query Error:", orderError.message);
+    console.error("Supabase Error:", orderError.message);
     return null;
   }
   
   if (!order) {
-    console.error("Order ID not found in database");
+    console.error("Order not found.");
     return null;
   }
 
-  // 2. Try to fetch official Invoice number
-  const { data: invoice } = await supabase
+  // 2. Try to fetch Invoice
+  let { data: invoice } = await supabase
     .from('invoices')
-    .select('invoice_number, issue_date, due_date, notes')
+    .select('*')
     .eq('order_id', orderId)
     .maybeSingle();
 
-  // 3. Construct Data (Fail-Safe Mode)
-  // If no invoice exists, we generate a "Virtual" one on the fly.
-  
-  const invNumber = invoice?.invoice_number || order.order_number || `INV-PREVIEW`;
+  // 3. GENERATE VIRTUAL INVOICE (Fail-safe)
+  // If invoice row is missing, we create one in memory so the user still sees data.
+  const invNumber = invoice?.invoice_number || order.order_number || 'INV-PREVIEW';
   const issueDate = invoice?.issue_date ? new Date(invoice.issue_date) : new Date(order.created_at);
   const dueDate = invoice?.due_date ? new Date(invoice.due_date) : new Date(order.created_at);
 
-  // Handle Profile: It might come back as an array or object depending on Supabase version
+  // Handle Profile Data
   const profile = Array.isArray(order.profiles) ? order.profiles[0] : order.profiles;
   
-  // Data Mappings
-  const customerName = profile?.full_name || 'Valued Customer';
-  const customerPhone = order.contact_number || profile?.phone || 'N/A'; // CSV shows contact_number in orders
+  // Data Mapping (Using Order Table Columns)
+  const customerName = profile?.full_name || 'Customer';
+  const customerPhone = order.contact_number || profile?.phone || 'N/A';
   const customerAddress = order.shipping_address || order.delivery_location || 'Address not provided';
 
   const items = order.items?.map((item: any) => ({
@@ -92,6 +90,7 @@ export async function getInvoiceData(orderId: string): Promise<InvoiceData | nul
     total: safeNum(item.price_at_time) * safeNum(item.quantity)
   })) || [];
 
+  // Return the data object
   return {
     invoiceNumber: invNumber,
     issueDate: issueDate.toLocaleDateString('en-BD'),
@@ -111,6 +110,8 @@ export async function getInvoiceData(orderId: string): Promise<InvoiceData | nul
 }
 
 export function generateInvoiceHTML(data: InvoiceData): string {
+  if (!data) return "<h1>No Invoice Data</h1>";
+
   const itemsHTML = data.items.map(item => `
     <tr>
       <td style="padding:10px;border-bottom:1px solid #eee;">${item.name}</td>
@@ -125,7 +126,7 @@ export function generateInvoiceHTML(data: InvoiceData): string {
     <html>
     <head>
       <style>
-        body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #333; max-width: 800px; margin: 0 auto; }
+        body { font-family: 'Helvetica Neue', Arial, sans-serif; padding: 40px; color: #333; max-width: 800px; margin: 0 auto; }
         .header { display: flex; justify-content: space-between; border-bottom: 2px solid #1e3a8a; padding-bottom: 20px; margin-bottom: 30px; }
         .title { font-size: 28px; font-weight: bold; color: #1e3a8a; margin: 0; }
         .subtitle { font-size: 14px; color: #666; margin-top: 5px; }
