@@ -1,4 +1,7 @@
-import { supabase } from '@/lib/supabase/client';
+// lib/invoice/invoice-generator.ts
+
+// 👇 KEY CHANGE: Import the Admin client, NOT the standard client
+import { supabaseAdmin } from '@/lib/supabase/admin';
 
 export interface InvoiceData {
   invoiceNumber: string;
@@ -35,26 +38,21 @@ const formatCurrency = (amount: number) => {
 };
 
 export async function getInvoiceData(orderId: string): Promise<InvoiceData | null> {
-  console.log("--- DEBUGGING INVOICE GENERATION ---");
+  console.log("--- GENERATING INVOICE (ADMIN MODE) ---");
   console.log("Fetching invoice for Order ID:", orderId);
 
-  // STEP 1: Fetch Order & Profile
-  // We select EVERYTHING (*) to see what columns exist in the logs
-  const { data: orderData, error: orderError } = await supabase
+  // STEP 1: Fetch Order & Profile (Using supabaseAdmin to bypass RLS)
+  const { data: orderData, error: orderError } = await supabaseAdmin
     .from('orders')
     .select(`*, profiles ( full_name, email, phone )`)
     .eq('id', orderId)
     .maybeSingle();
 
-  // --- DEBUG LOGS FOR ORDER ---
-  if (orderError) console.error("Database Error (Orders):", orderError.message);
-  console.log("RAW ORDER DATA:", orderData ? "Found" : "Null");
-  if (orderData) {
-      console.log("Order Columns found:", Object.keys(orderData));
-      console.log("Profile Data:", orderData.profiles);
+  if (orderError) {
+    console.error("Database Error (Orders):", orderError.message);
   }
 
-  // Fallback object
+  // Fallback object (only used if order really doesn't exist)
   const order = orderData || {
     id: orderId,
     order_number: 'ORD-MISSING',
@@ -67,22 +65,17 @@ export async function getInvoiceData(orderId: string): Promise<InvoiceData | nul
     shipping_address: ''
   };
 
-  // STEP 2: Fetch Items
-  // We select EVERYTHING (*) to see if column names are different
-  const { data: orderItems, error: itemsError } = await supabase
+  // STEP 2: Fetch Items (Using supabaseAdmin)
+  const { data: orderItems, error: itemsError } = await supabaseAdmin
     .from('order_items')
     .select('*') 
     .eq('order_id', orderId);
 
-  // --- DEBUG LOGS FOR ITEMS ---
-  if (itemsError) console.error("Database Error (Items):", itemsError.message);
-  console.log("RAW ITEMS COUNT:", orderItems?.length || 0);
-  if (orderItems && orderItems.length > 0) {
-    console.log("Item Columns found:", Object.keys(orderItems[0]));
-    console.log("First Item Sample:", orderItems[0]);
+  if (itemsError) {
+    console.error("Database Error (Items):", itemsError.message);
   }
 
-  // MAPPING LOGIC (Adjust this based on what you see in logs!)
+  // MAPPING LOGIC
   const items = orderItems?.map((item: any) => ({
     name: item.product_name || item.name || item.title || 'Product',
     quantity: safeNum(item.quantity),
@@ -90,14 +83,15 @@ export async function getInvoiceData(orderId: string): Promise<InvoiceData | nul
     total: safeNum(item.total_price || item.total)
   })) || [];
 
+  // Calculate totals if order data was missing/null but items were found
   if (!orderData && items.length > 0) {
     const calculatedSubtotal = items.reduce((acc, item) => acc + item.total, 0);
     order.subtotal = calculatedSubtotal;
     order.total = calculatedSubtotal;
   }
 
-  // STEP 3: Fetch or Create Invoice
-  let { data: invoice } = await supabase
+  // STEP 3: Fetch or Create Invoice Record (Using supabaseAdmin)
+  let { data: invoice } = await supabaseAdmin
     .from('invoices')
     .select('*')
     .eq('order_id', orderId)
@@ -118,7 +112,7 @@ export async function getInvoiceData(orderId: string): Promise<InvoiceData | nul
       notes: 'Thank you for shopping with Spraxe!'
     };
 
-    const { data: saved } = await supabase
+    const { data: saved } = await supabaseAdmin
       .from('invoices')
       .insert(newInvoiceObj)
       .select()
@@ -127,15 +121,12 @@ export async function getInvoiceData(orderId: string): Promise<InvoiceData | nul
     invoice = saved || newInvoiceObj;
   }
 
-  // STEP 4: Customer Details
+  // STEP 4: Customer Details Mapping
   const profile = order.profiles && (Array.isArray(order.profiles) ? order.profiles[0] : order.profiles);
   
-  // Try multiple common column names for phone/address
   const customerName = profile?.full_name || order.customer_name || 'Valued Customer';
   const customerPhone = order.contact_number || order.phone || profile?.phone || 'N/A';
   const customerAddress = order.shipping_address || order.address || order.delivery_location || 'Address not provided';
-
-  console.log("Final Customer Data Mapped:", { customerName, customerPhone, customerAddress });
 
   return {
     invoiceNumber: invoice.invoice_number,
