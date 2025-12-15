@@ -1,3 +1,4 @@
+// app/api/send-invoice/route.ts
 import { NextResponse } from 'next/server';
 import { getInvoiceData, generateEmailInvoiceHTML } from '@/lib/invoice/invoice-generator';
 
@@ -21,17 +22,18 @@ export async function POST(req: Request) {
     const emailHtml = generateEmailInvoiceHTML(invoiceData);
 
     // 3. Prepare Brevo API Request
-    const apiKey = process.env.BREVO_API_KEY; // NEW VARIABLE
+    const apiKey = process.env.BREVO_API_KEY; 
     
     if (!apiKey) {
       console.error("Missing BREVO_API_KEY");
       return NextResponse.json({ error: "Server config error: Missing API Key" }, { status: 500 });
     }
 
+    // 👇 UPDATED SENDER DETAILS HERE
     const payload = {
       sender: {
-        name: "Spraxe Support",
-        email: "9d0a00001@smtp-brevo.com" // Must match your verified sender in Brevo
+        name: "Spraxe", 
+        email: "spraxecare@gmail.com" // This email MUST be verified in Brevo
       },
       to: [
         {
@@ -43,7 +45,7 @@ export async function POST(req: Request) {
       htmlContent: emailHtml
     };
 
-    // 4. Send via HTTP (Port 443 - Never Blocked)
+    // 4. Send via HTTP (Port 443 - Uses API Key, ignores SMTP Host/User)
     const response = await fetch('https://api.brevo.com/v3/smtp/email', {
       method: 'POST',
       headers: {
