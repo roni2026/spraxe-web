@@ -133,6 +133,7 @@ export default function HomePage() {
     }
   };
 
+  // --- UPDATED PRODUCT CARD FOR COMPACT LOOK ---
   const ProductCard = ({ product }: { product: Product }) => (
     <Card className="hover:shadow-lg transition group overflow-hidden h-full flex flex-col border-gray-200">
       <CardContent className="p-0 flex flex-col h-full">
@@ -155,24 +156,27 @@ export default function HomePage() {
 
         <div className="p-2 space-y-1.5 flex flex-col flex-1">
           <Link href={`/products/${product.slug}`} className="block">
-            <h3 className="text-xs md:text-sm font-medium text-gray-900 line-clamp-2 min-h-[2rem] hover:text-blue-900 hover:underline transition leading-tight">
+            {/* Reduced Title Size */}
+            <h3 className="text-xs font-medium text-gray-900 line-clamp-2 min-h-[2rem] hover:text-blue-900 hover:underline transition leading-tight">
               {product.name}
             </h3>
           </Link>
 
           <div className="mt-auto space-y-2">
-            <p className="text-base md:text-lg font-bold text-blue-900">
+            {/* Reduced Price Size */}
+            <p className="text-sm md:text-base font-bold text-blue-900">
               ৳{product.price || product.base_price}
             </p>
+            {/* Reduced Button Height (h-7) and Text */}
             <Button
               onClick={(e) => {
                 e.stopPropagation();
                 handleAddToCart(product.id, product.name);
               }}
-              className="w-full bg-blue-900 hover:bg-blue-800 h-8 text-xs"
+              className="w-full bg-blue-900 hover:bg-blue-800 h-7 text-[10px] md:text-xs"
               size="sm"
             >
-              <ShoppingCart className="mr-1.5 h-3.5 w-3.5" />
+              <ShoppingCart className="mr-1.5 h-3 w-3" />
               Add
             </Button>
           </div>
@@ -277,13 +281,12 @@ export default function HomePage() {
           ) : (
             <Carousel 
               opts={{ 
-                align: "start", // FIXED: "start" ensures you can always scroll left/right naturally
+                align: "start", // FIXED: "start" allows correct scrolling
                 dragFree: true,
                 containScroll: "trimSnaps" 
               }} 
               className="w-full"
             >
-              {/* FIXED: Removed justify-center so it doesn't break scrolling */}
               <CarouselContent className="-ml-3">
                 {categories.map((cat) => (
                   <CarouselItem key={cat.id} className="pl-3 basis-[28%] sm:basis-[20%] md:basis-[14%] lg:basis-[10%]">
@@ -328,8 +331,9 @@ export default function HomePage() {
             </Link>
           </div>
 
+          {/* Tighter gap (gap-2 on mobile, gap-3 on desktop) for compact look */}
           {loading ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-2 md:gap-3">
               {[...Array(6)].map((_, i) => (
                 <Card key={i}>
                   <CardContent className="p-2">
@@ -346,7 +350,7 @@ export default function HomePage() {
               <p className="text-gray-600 text-sm">No best sellers yet</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-2 md:gap-3">
               {bestSellers.map((product) => (
                 <ProductCard key={product.id} product={product} />
               ))}
@@ -369,7 +373,7 @@ export default function HomePage() {
           </div>
 
           {loading ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-2 md:gap-3">
               {[...Array(12)].map((_, i) => (
                 <Card key={i}>
                   <CardContent className="p-2">
@@ -387,7 +391,7 @@ export default function HomePage() {
               <p className="text-gray-600 mb-4">Products will appear here once they are added.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-2 md:gap-3">
               {products.map((product) => (
                 <ProductCard key={product.id} product={product} />
               ))}
