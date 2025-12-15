@@ -24,6 +24,20 @@ import {
   CarouselPrevious,
 } from '@/components/ui/carousel';
 
+// 1. DEFINE THE EXACT MAIN CATEGORIES YOU WANT TO SHOW
+const TARGET_CATEGORIES = [
+  "Women’s Fashion",
+  "Man’s Fashion",
+  "Laptop & Computer Accessories",
+  "Gadgets",
+  "Headphone",
+  "Watches",
+  "CCTV Camera",
+  "Home Appliances",
+  "Home Electronics",
+  "Home Decor & Textile"
+];
+
 export default function HomePage() {
   const { user } = useAuth();
   const { addToCart } = useCart();
@@ -62,8 +76,8 @@ export default function HomePage() {
           .from('categories')
           .select('*')
           .eq('is_active', true)
-          .order('sort_order', { ascending: true })
-          .limit(15),
+          // We fetch more initially to ensure we find the specific ones you want
+          .limit(50), 
         supabase
           .from('featured_images')
           .select('*')
@@ -73,7 +87,23 @@ export default function HomePage() {
 
       if (productsRes.data) setProducts(productsRes.data);
       if (bestSellersRes.data) setBestSellers(bestSellersRes.data);
-      if (categoriesRes.data) setCategories(categoriesRes.data);
+      
+      // 2. FILTER CATEGORIES STRICTLY BASED ON YOUR LIST
+      if (categoriesRes.data) {
+        // Create a map for sorting based on your target list order
+        const sortMap = new Map(TARGET_CATEGORIES.map((name, i) => [name.toLowerCase(), i]));
+        
+        const filteredCategories = categoriesRes.data
+          .filter(cat => TARGET_CATEGORIES.some(target => target.toLowerCase() === cat.name.toLowerCase()))
+          .sort((a, b) => {
+            const indexA = sortMap.get(a.name.toLowerCase()) ?? 999;
+            const indexB = sortMap.get(b.name.toLowerCase()) ?? 999;
+            return indexA - indexB;
+          });
+          
+        setCategories(filteredCategories);
+      }
+      
       if (featuredRes.data) setFeaturedImages(featuredRes.data);
       setLoading(false);
     };
@@ -105,11 +135,13 @@ export default function HomePage() {
     }
   };
 
+  // 3. UPDATED PRODUCT CARD: SMALLER STYLES
   const ProductCard = ({ product }: { product: Product }) => (
-    <Card className="hover:shadow-lg transition group overflow-hidden h-full flex flex-col">
+    <Card className="hover:shadow-lg transition group overflow-hidden h-full flex flex-col border-gray-200">
       <CardContent className="p-0 flex flex-col h-full">
+        {/* Reduced height of image container slightly relative to text */}
         <div 
-          className="aspect-square bg-gray-100 overflow-hidden relative cursor-zoom-in"
+          className="aspect-square bg-gray-50 overflow-hidden relative cursor-zoom-in"
           onClick={() => setViewingProduct(product)}
         >
           {product.images && product.images.length > 0 ? (
@@ -120,32 +152,36 @@ export default function HomePage() {
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center">
-              <Package className="w-12 h-12 text-gray-300" />
+              <Package className="w-10 h-10 text-gray-300" />
             </div>
           )}
         </div>
 
-        <div className="p-3 space-y-2 flex flex-col flex-1">
+        {/* Reduced padding from p-3 to p-2 */}
+        <div className="p-2 space-y-1.5 flex flex-col flex-1">
           <Link href={`/products/${product.slug}`} className="block">
-            <h3 className="text-sm font-medium text-gray-900 line-clamp-2 min-h-[2.5rem] hover:text-blue-900 hover:underline transition">
+            {/* Reduced font size: text-sm to text-xs md:text-sm */}
+            <h3 className="text-xs md:text-sm font-medium text-gray-900 line-clamp-2 min-h-[2rem] hover:text-blue-900 hover:underline transition leading-tight">
               {product.name}
             </h3>
           </Link>
 
           <div className="mt-auto space-y-2">
-            <p className="text-lg font-bold text-blue-900">
+            {/* Reduced font size: text-lg to text-base md:text-lg */}
+            <p className="text-base md:text-lg font-bold text-blue-900">
               ৳{product.price || product.base_price}
             </p>
+            {/* Reduced button height: h-9 to h-8 and text size */}
             <Button
               onClick={(e) => {
                 e.stopPropagation();
                 handleAddToCart(product.id, product.name);
               }}
-              className="w-full bg-blue-900 hover:bg-blue-800 h-9"
+              className="w-full bg-blue-900 hover:bg-blue-800 h-8 text-xs"
               size="sm"
             >
-              <ShoppingCart className="mr-2 h-4 w-4" />
-              Add to Cart
+              <ShoppingCart className="mr-1.5 h-3.5 w-3.5" />
+              Add
             </Button>
           </div>
         </div>
@@ -157,11 +193,11 @@ export default function HomePage() {
     <div className="min-h-screen flex flex-col bg-gray-50">
       <Header />
 
-      {/* Hero Section - UPDATED HEIGHTS */}
+      {/* Hero Section */}
       <section className="bg-white pt-4 pb-2">
         <div className="w-full max-w-[1800px] mx-auto px-4">
           
-          {/* DESKTOP BANNER (Reduced height to 380px) */}
+          {/* DESKTOP BANNER */}
           <div className="hidden md:block">
              <Carousel className="w-full" opts={{ loop: true }}>
                <CarouselContent>
@@ -192,7 +228,7 @@ export default function HomePage() {
              </Carousel>
           </div>
 
-          {/* MOBILE BANNER (Reduced height to 160px) */}
+          {/* MOBILE BANNER */}
           <div className="md:hidden">
             <Carousel opts={{ align: "start", loop: true }} className="w-full" setApi={setCarouselApi}>
               <CarouselContent>
@@ -229,7 +265,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* --- CATEGORY SECTION (AMAZON STYLE: ROUND & COMPACT) --- */}
+      {/* --- CATEGORY SECTION --- */}
       <section className="bg-white py-4 border-b border-gray-100">
         <div className="w-full max-w-[1800px] mx-auto px-4">
           
@@ -250,18 +286,16 @@ export default function HomePage() {
             <Carousel 
               opts={{ 
                 align: "start", 
-                dragFree: true 
+                dragFree: true,
+                containScroll: "trimSnaps" // Helps prevents scrolling too far into empty space
               }} 
               className="w-full"
             >
               <CarouselContent className="-ml-3">
                 {categories.map((cat) => (
-                  // Sizing: Adjusted for "Round" look. 
-                  // Mobile: 25% width (4 items). Desktop: 10% width (10 items).
                   <CarouselItem key={cat.id} className="pl-3 basis-[28%] sm:basis-[20%] md:basis-[14%] lg:basis-[10%]">
                     <Link href={`/products?category=${cat.id}`} className="group block text-center">
                       <div className="flex flex-col items-center gap-2">
-                        {/* Round Image Container - Amazon Style */}
                         <div className="w-20 h-20 md:w-24 md:h-24 rounded-full bg-gray-50 border border-gray-100 overflow-hidden relative shadow-sm group-hover:shadow-md transition-all">
                           {cat.image_url ? (
                             <img 
@@ -275,7 +309,6 @@ export default function HomePage() {
                             </div>
                           )}
                         </div>
-                        {/* Category Name */}
                         <span className="text-xs md:text-sm font-medium text-gray-900 group-hover:text-blue-700 leading-tight line-clamp-2 px-1">
                           {cat.name}
                         </span>
@@ -292,23 +325,24 @@ export default function HomePage() {
       {/* Best Sellers Section */}
       <section className="py-8 bg-gray-50">
         <div className="container mx-auto px-4">
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-2xl font-bold text-gray-900">Best Sellers</h2>
-              <p className="text-sm text-gray-600">Most popular products</p>
+              <h2 className="text-xl md:text-2xl font-bold text-gray-900">Best Sellers</h2>
+              <p className="text-xs md:text-sm text-gray-600">Most popular products</p>
             </div>
             <Link href="/products">
-              <Button variant="outline" size="sm">View All</Button>
+              <Button variant="outline" size="sm" className="h-8 text-xs">View All</Button>
             </Link>
           </div>
 
+          {/* UPDATED GRID: Added xl:grid-cols-7 and tightened gap slightly */}
           {loading ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-3 md:gap-4">
               {[...Array(6)].map((_, i) => (
                 <Card key={i}>
-                  <CardContent className="p-3">
-                    <Skeleton className="w-full aspect-square mb-3" />
-                    <Skeleton className="w-full h-4 mb-2" />
+                  <CardContent className="p-2">
+                    <Skeleton className="w-full aspect-square mb-2" />
+                    <Skeleton className="w-full h-3 mb-2" />
                     <Skeleton className="w-3/4 h-3" />
                   </CardContent>
                 </Card>
@@ -320,7 +354,7 @@ export default function HomePage() {
               <p className="text-gray-600 text-sm">No best sellers yet</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-3 md:gap-4">
               {bestSellers.map((product) => (
                 <ProductCard key={product.id} product={product} />
               ))}
@@ -332,23 +366,24 @@ export default function HomePage() {
       {/* Featured Products Section */}
       <section className="py-8 bg-white">
         <div className="container mx-auto px-4">
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-2xl font-bold text-gray-900">Featured Products</h2>
-              <p className="text-sm text-gray-600">Check out our top picks</p>
+              <h2 className="text-xl md:text-2xl font-bold text-gray-900">Featured Products</h2>
+              <p className="text-xs md:text-sm text-gray-600">Check out our top picks</p>
             </div>
             <Link href="/products">
-              <Button variant="outline" size="sm">View All</Button>
+              <Button variant="outline" size="sm" className="h-8 text-xs">View All</Button>
             </Link>
           </div>
 
+          {/* UPDATED GRID */}
           {loading ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-3 md:gap-4">
               {[...Array(12)].map((_, i) => (
                 <Card key={i}>
-                  <CardContent className="p-3">
-                    <Skeleton className="w-full aspect-square mb-3" />
-                    <Skeleton className="w-full h-4 mb-2" />
+                  <CardContent className="p-2">
+                    <Skeleton className="w-full aspect-square mb-2" />
+                    <Skeleton className="w-full h-3 mb-2" />
                     <Skeleton className="w-3/4 h-3" />
                   </CardContent>
                 </Card>
@@ -361,7 +396,7 @@ export default function HomePage() {
               <p className="text-gray-600 mb-4">Products will appear here once they are added.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-3 md:gap-4">
               {products.map((product) => (
                 <ProductCard key={product.id} product={product} />
               ))}
