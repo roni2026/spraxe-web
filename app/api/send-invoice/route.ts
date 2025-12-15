@@ -22,23 +22,21 @@ export async function POST(req: Request) {
     // 2. Generate Email HTML
     const emailHtml = generateEmailInvoiceHTML(invoiceData);
 
-    // 3. Configure Transporter (Aggressive Render Fixes)
+    // 3. Configure Transporter (PLAN B: PORT 587)
     const transporter = nodemailer.createTransport({
-      // Try legacy hostname if main one times out
-      host: 'smtp-relay.sendinblue.com', 
-      port: 465,
-      secure: true,
+      host: 'smtp-relay.brevo.com', // Use the main domain again
+      port: 587,                    // <--- CHANGE TO 587
+      secure: false,                // <--- CHANGE TO FALSE (Required for 587)
       auth: {
         user: '9d0a00001@smtp-brevo.com',
         pass: process.env.BREVO_SMTP_KEY || process.env.SMTP_PASSWORD,
       },
-      // NETWORK FIXES
-      family: 4,              // Force IPv4
-      connectionTimeout: 60000, // Wait 60 seconds (Render can be slow)
-      greetingTimeout: 30000,   // Wait 30s for server greeting
-      socketTimeout: 60000,     // Keep socket open longer
-      logger: true,           // Log SMTP traffic to console
-      debug: true             // Include debug info
+      // NETWORK SETTINGS
+      family: 4,              // Keep IPv4 (Vital)
+      connectionTimeout: 60000, 
+      greetingTimeout: 30000,   
+      logger: true,           
+      debug: true             
     } as any);
 
     // 4. Send Email
