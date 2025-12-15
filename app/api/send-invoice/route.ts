@@ -20,31 +20,34 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invoice data not found' }, { status: 404 });
     }
 
-    console.log("Generating virtual invoice...");
-    
     // 2. Generate HTML
     const invoiceHtml = generateInvoiceHTML(invoiceData);
 
-    // 3. Configure Brevo SMTP Transporter
+    // 3. Resolve Password (Handle undefined TS error)
+    const smtpPassword = process.env.BREVO_SMTP_KEY || process.env.SMTP_PASSWORD;
+
+    if (!smtpPassword) {
+      console.error('Missing SMTP Password in Environment Variables');
+      return NextResponse.json({ error: 'Server Misconfiguration' }, { status: 500 });
+    }
+
+    // 4. Configure Brevo SMTP Transporter
+    // We cast to 'any' here to fix the "No overload matches this call" TypeScript error
     const transporter = nodemailer.createTransport({
       host: 'smtp-relay.brevo.com',
       port: 465,
-      secure: true, // true for 465
+      secure: true,
       auth: {
-        user: '9d0a00001@smtp-brevo.com', // Your Brevo Login
-        pass: process.env.BREVO_SMTP_KEY, // Ensure this matches your .env variable name
+        user: '9d0a00001@smtp-brevo.com',
+        pass: smtpPassword,
       },
-      // 👇 THIS IS THE FIX FOR RENDER TIMEOUTS 👇
-      family: 4, 
-    });
-
-    // 4. Verify Connection (Optional but good for debugging)
-    await transporter.verify(); 
+      family: 4, // Forces IPv4 (Fixes Render Timeout)
+    } as any);
 
     // 5. Send Email
     const info = await transporter.sendMail({
-      from: '"Spraxe Support" <9d0a00001@smtp-brevo.com>', // Use your authenticated email or verified domain
-      to: email, 
+      from: '"Spraxe Support" <9d0a00001@smtp-brevo.com>',
+      to: email,
       subject: `Invoice for Order #${invoiceData.invoiceNumber}`,
       html: `
         <div style="font-family: Arial, sans-serif; color: #333;">
