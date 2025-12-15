@@ -30,24 +30,38 @@ export default function InvoiceViewer({ invoiceHTML, invoiceNumber }: InvoiceVie
     setIsDownloading(true);
 
     try {
-      // 1. Get the content inside the iframe (The Invoice)
-      const element = iframe.contentWindow.document.body;
+      // 1. Get the document from the iframe
+      const iframeDoc = iframe.contentWindow.document;
 
-      // 2. Load html2pdf dynamically (Client-side only)
+      // 2. CRITICAL FIX: The styles are in <head>, but html2pdf captures <body>.
+      // We must copy the styles INTO the body so the PDF generator sees them.
+      const styles = iframeDoc.querySelectorAll('style, link[rel="stylesheet"]');
+      const body = iframeDoc.body;
+      
+      // Clone styles and prepend to body (temporary for capture)
+      styles.forEach((styleNode) => {
+        body.prepend(styleNode.cloneNode(true));
+      });
+
+      // 3. Load html2pdf dynamically
       // @ts-ignore
       const html2pdf = (await import('html2pdf.js')).default;
 
-      // 3. Configure PDF settings
+      // 4. Configure PDF settings
       const opt = {
-        margin:       10, // Margin in mm
+        margin:       [10, 10, 10, 10], // Top, Left, Bottom, Right
         filename:     `${invoiceNumber}.pdf`,
         image:        { type: 'jpeg', quality: 0.98 },
-        html2canvas:  { scale: 2, useCORS: true }, // Higher scale = Better quality
+        // Fixed width ensures it renders as "Desktop" not "Mobile"
+        html2canvas:  { scale: 2, useCORS: true, windowWidth: 1000 }, 
         jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
       };
 
-      // 4. Save the PDF
-      await html2pdf().set(opt).from(element).save();
+      // 5. Generate PDF from the styled body
+      await html2pdf().set(opt).from(body).save();
+      
+      // Cleanup: Remove the injected styles to prevent duplicates if clicked again
+      // (Optional, but good practice. The page reload clears it anyway)
       
       toast({ title: 'Success', description: 'Invoice downloaded as PDF' });
 
@@ -101,7 +115,6 @@ export default function InvoiceViewer({ invoiceHTML, invoiceNumber }: InvoiceVie
               srcDoc={invoiceHTML}
               title="Invoice"
               className="w-full h-[1100px] border-none"
-              // Ensure scripts are allowed so html2pdf can access it safely
               sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
             />
           </CardContent>
