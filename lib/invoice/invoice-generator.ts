@@ -35,78 +35,55 @@ const formatCurrency = (amount: number) => {
 };
 
 export async function getInvoiceData(orderId: string): Promise<InvoiceData | null> {
-  // 1. Fetch Order Data (Source of Truth)
+  console.log("Fetching invoice for:", orderId);
+
+  // 1. Fetch Order (The critical data source)
+  // FIX: Removed 'addresses' join because your CSV shows address is text in 'orders'
   const { data: order, error: orderError } = await supabase
     .from('orders')
     .select(`
       *,
-      profiles (
-        full_name,
-        email,
-        phone
-      ),
+      profiles ( full_name, email, phone ),
       items:order_items (
         quantity,
         price_at_time,
-        product:products (name)
+        product:products ( name )
       )
     `)
     .eq('id', orderId)
     .maybeSingle();
 
-  if (orderError || !order) {
-    console.error("Order fetch error:", orderError);
+  if (orderError) {
+    console.error("Supabase Query Error:", orderError.message);
+    return null;
+  }
+  
+  if (!order) {
+    console.error("Order ID not found in database");
     return null;
   }
 
-  // 2. Try to fetch existing Invoice
-  let { data: invoice, error: invoiceError } = await supabase
+  // 2. Try to fetch official Invoice number
+  const { data: invoice } = await supabase
     .from('invoices')
-    .select('*')
+    .select('invoice_number, issue_date, due_date, notes')
     .eq('order_id', orderId)
     .maybeSingle();
 
-  // 3. AUTO-GENERATE if Invoice is missing
-  if (!invoice) {
-    console.log("Invoice missing for order. Generating new one...");
-    
-    // Generate a unique invoice number: INV-YYYYMMDD-XXXX
-    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    const randomSuffix = Math.floor(1000 + Math.random() * 9000); // 4 digit random
-    const newInvoiceNumber = `INV-${dateStr}-${randomSuffix}`;
+  // 3. Construct Data (Fail-Safe Mode)
+  // If no invoice exists, we generate a "Virtual" one on the fly.
+  
+  const invNumber = invoice?.invoice_number || order.order_number || `INV-PREVIEW`;
+  const issueDate = invoice?.issue_date ? new Date(invoice.issue_date) : new Date(order.created_at);
+  const dueDate = invoice?.due_date ? new Date(invoice.due_date) : new Date(order.created_at);
 
-    const { data: newInvoice, error: createError } = await supabase
-      .from('invoices')
-      .insert({
-        order_id: orderId,
-        invoice_number: newInvoiceNumber,
-        issue_date: new Date().toISOString(),
-        due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // +7 days
-        subtotal: order.subtotal || 0,
-        tax_amount: 0,
-        discount_amount: order.discount || 0, // Using 'discount' from orders
-        total_amount: order.total || 0,       // Using 'total' from orders
-        notes: 'Thank you for shopping with Spraxe!'
-      })
-      .select()
-      .single();
-
-    if (createError) {
-      console.error("Failed to auto-create invoice:", createError);
-      // Fallback: Create a temporary object so the user still sees the invoice view
-      invoice = {
-        invoice_number: newInvoiceNumber,
-        issue_date: new Date().toISOString(),
-        due_date: new Date().toISOString(),
-        notes: 'Preview (Unsaved)'
-      };
-    } else {
-      invoice = newInvoice;
-    }
-  }
-
-  // 4. Prepare Return Data
-  const profileData = Array.isArray(order.profiles) ? order.profiles[0] : order.profiles;
+  // Handle Profile: It might come back as an array or object depending on Supabase version
+  const profile = Array.isArray(order.profiles) ? order.profiles[0] : order.profiles;
+  
+  // Data Mappings
+  const customerName = profile?.full_name || 'Valued Customer';
+  const customerPhone = order.contact_number || profile?.phone || 'N/A'; // CSV shows contact_number in orders
+  const customerAddress = order.shipping_address || order.delivery_location || 'Address not provided';
 
   const items = order.items?.map((item: any) => ({
     name: item.product?.name || 'Product',
@@ -116,21 +93,20 @@ export async function getInvoiceData(orderId: string): Promise<InvoiceData | nul
   })) || [];
 
   return {
-    invoiceNumber: invoice.invoice_number,
-    issueDate: new Date(invoice.issue_date).toLocaleDateString('en-BD'),
-    dueDate: new Date(invoice.due_date).toLocaleDateString('en-BD'),
+    invoiceNumber: invNumber,
+    issueDate: issueDate.toLocaleDateString('en-BD'),
+    dueDate: dueDate.toLocaleDateString('en-BD'),
     customer: {
-      name: profileData?.full_name || 'Customer',
-      phone: order.contact_number || profileData?.phone || 'N/A',
-      address: order.shipping_address || order.delivery_location || 'Address not provided',
+      name: customerName,
+      phone: customerPhone,
+      address: customerAddress,
     },
     items: items,
-    // Use Order money values as source of truth
     subtotal: safeNum(order.subtotal),
     discountAmount: safeNum(order.discount),
     shippingCost: safeNum(order.shipping_cost),
-    totalAmount: safeNum(order.total),
-    notes: invoice.notes || '',
+    totalAmount: safeNum(order.total), 
+    notes: invoice?.notes || order.notes || '',
   };
 }
 
@@ -155,18 +131,12 @@ export function generateInvoiceHTML(data: InvoiceData): string {
         .subtitle { font-size: 14px; color: #666; margin-top: 5px; }
         .invoice-box { text-align: right; }
         .invoice-label { font-size: 24px; font-weight: bold; color: #1e3a8a; }
-        
         .info-card { background: #f8fafc; padding: 20px; border-radius: 8px; margin-bottom: 30px; border-left: 4px solid #1e3a8a; }
-        .info-label { font-size: 12px; text-transform: uppercase; color: #64748b; font-weight: bold; margin-bottom: 5px; }
-        .info-value { font-size: 16px; font-weight: 500; }
-
         table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
         th { background: #f1f5f9; padding: 12px; text-align: left; font-size: 12px; text-transform: uppercase; color: #475569; }
-        
         .totals { width: 300px; margin-left: auto; }
         .row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; }
         .total-row { display: flex; justify-content: space-between; padding: 12px 0; border-top: 2px solid #1e3a8a; margin-top: 10px; font-weight: bold; font-size: 18px; color: #1e3a8a; }
-        
         .footer { margin-top: 50px; text-align: center; font-size: 12px; color: #94a3b8; border-top: 1px solid #eee; padding-top: 20px; }
       </style>
     </head>
@@ -185,8 +155,8 @@ export function generateInvoiceHTML(data: InvoiceData): string {
       </div>
 
       <div class="info-card">
-        <div class="info-label">Bill To</div>
-        <div class="info-value">${data.customer.name}</div>
+        <div style="font-size:12px; text-transform:uppercase; color:#64748b; font-weight:bold; margin-bottom:5px;">Bill To</div>
+        <div style="font-size:16px; font-weight:500;">${data.customer.name}</div>
         <div>${data.customer.phone}</div>
         <div style="margin-top:5px; color:#475569;">${data.customer.address}</div>
       </div>
