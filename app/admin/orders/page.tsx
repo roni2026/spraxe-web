@@ -27,11 +27,11 @@ interface Order {
   total: number;
   total_amount: number;
   created_at: string;
-  contact_number: string; // From 'orders' table
+  contact_number: string;
   profiles: {
     full_name: string;
     email: string;
-    phone: string; // <--- FIXED: 'profiles' table uses 'phone'
+    phone: string;
   };
 }
 
@@ -54,7 +54,6 @@ export default function OrdersManagement() {
   const fetchOrders = async () => {
     setLoading(true);
     
-    // FIXED QUERY: selecting 'phone' from profiles, not 'contact_number'
     let query = supabase
       .from('orders')
       .select(`
@@ -86,7 +85,9 @@ export default function OrdersManagement() {
     setLoading(false);
   };
   
-  const handleStatusChange = async (orderId: string, newStatus: string) => {
+  // --- UPDATED FUNCTION WITH EMAIL LOGIC ---
+  const handleStatusChange = async (orderId: string, newStatus: string, customerEmail?: string) => {
+    // 1. Update Database Status
     const { error } = await supabase
       .from('orders')
       .update({ status: newStatus })
@@ -98,12 +99,43 @@ export default function OrdersManagement() {
         description: 'Failed to update order status',
         variant: 'destructive',
       });
-    } else {
-      toast({
-        title: 'Success',
-        description: 'Order status updated',
-      });
-      fetchOrders();
+      return;
+    } 
+
+    toast({
+      title: 'Success',
+      description: 'Order status updated',
+    });
+    
+    // Refresh the UI
+    fetchOrders();
+
+    // 2. Trigger Email if status is 'processing'
+    if (newStatus === 'processing') {
+      if (customerEmail) {
+        toast({ title: 'Sending Email...', description: 'Generating and sending invoice...' });
+        
+        try {
+          // Call the API route we created
+          const response = await fetch('/api/send-invoice', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orderId, email: customerEmail }),
+          });
+
+          if (response.ok) {
+            toast({ title: 'Email Sent', description: `Invoice sent to ${customerEmail}` });
+          } else {
+            console.error('Email API Failed');
+            toast({ title: 'Email Warning', description: 'Status updated, but email failed to send.', variant: 'destructive' });
+          }
+        } catch (err) {
+          console.error("Email Fetch Error:", err);
+          toast({ title: 'Email Error', description: 'Could not connect to email server.', variant: 'destructive' });
+        }
+      } else {
+        console.log("No email found for this user, skipping email.");
+      }
     }
   };
 
@@ -185,7 +217,6 @@ export default function OrdersManagement() {
                           {order.profiles?.full_name || 'Unknown Name'}
                         </div>
 
-                        {/* PHONE LOGIC: Order Contact (Preferred) -> Profile Phone -> 'No Phone' */}
                         <div className="flex items-center gap-2 text-gray-800 font-medium">
                           <Phone className="w-4 h-4 text-green-600" />
                           {order.contact_number || order.profiles?.phone || 'No Phone'}
@@ -204,7 +235,10 @@ export default function OrdersManagement() {
                         <div className="flex gap-2 mt-2">
                           <Select
                             value={order.status}
-                            onValueChange={(value) => handleStatusChange(order.id, value)}
+                            onValueChange={(value) => 
+                              // --- PASS EMAIL HERE ---
+                              handleStatusChange(order.id, value, order.profiles?.email)
+                            }
                           >
                             <SelectTrigger className="w-32 h-8 text-xs">
                               <SelectValue />
