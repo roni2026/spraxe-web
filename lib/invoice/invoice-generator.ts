@@ -167,8 +167,8 @@ export function generateInvoiceHTML(data: InvoiceData): string {
     <head>
       <style>
         body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #333; max-width: 800px; margin: 0 auto; }
-        .header { display: flex; justify-content: space-between; border-bottom: 2px solid #1e3a8a; padding-bottom: 20px; margin-bottom: 30px; }
-        .title { font-size: 28px; font-weight: bold; color: #1e3a8a; margin: 0; }
+        .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #1e3a8a; padding-bottom: 20px; margin-bottom: 30px; }
+        .logo-img { max-width: 160px; height: auto; display: block; margin-bottom: 5px; } 
         .subtitle { font-size: 14px; color: #666; margin-top: 5px; }
         .invoice-box { text-align: right; }
         .invoice-label { font-size: 24px; font-weight: bold; color: #1e3a8a; }
@@ -186,7 +186,7 @@ export function generateInvoiceHTML(data: InvoiceData): string {
     <body>
       <div class="header">
         <div>
-          <h1 class="title">SPRAXE</h1>
+          <img src="https://kybgrsqqvejbvjediowo.supabase.co/storage/v1/object/public/category/spraxe.png" alt="SPRAXE" class="logo-img" />
           <div class="subtitle">Gazipur, Dhaka, Bangladesh</div>
           <div class="subtitle">09638371951</div>
         </div>
@@ -264,7 +264,7 @@ export function generateEmailInvoiceHTML(data: InvoiceData): string {
                   <table width="100%" border="0" cellspacing="0" cellpadding="0">
                     <tr>
                       <td valign="top" style="padding-bottom: 20px;">
-                        <h1 style="margin: 0; font-size: 28px; color: #1e3a8a; font-weight: bold;">SPRAXE</h1>
+                        <img src="https://kybgrsqqvejbvjediowo.supabase.co/storage/v1/object/public/category/spraxe.png" alt="SPRAXE" width="150" style="display: block; border: 0; outline: none; text-decoration: none; margin-bottom: 10px;" />
                         <p style="margin: 5px 0 0 0; color: #666; font-size: 14px;">Gazipur, Dhaka, Bangladesh</p>
                         <p style="margin: 0; color: #666; font-size: 14px;">09638371951</p>
                       </td>
