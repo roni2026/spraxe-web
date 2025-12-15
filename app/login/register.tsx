@@ -96,16 +96,18 @@ function RegisterForms({ onLoading, isLoading, onGoogleLogin }: { onLoading: (v:
   const [fullName, setFullName] = useState('');
 
   // -- EMAIL STATE --
+  const [emailStep, setEmailStep] = useState<'details' | 'otp'>('details'); // Track Email Step
   const [showPassword, setShowPassword] = useState(false);
   const [signUpEmail, setSignUpEmail] = useState('');
   const [signUpPassword, setSignUpPassword] = useState('');
+  const [emailOtp, setEmailOtp] = useState(''); // Store Email OTP
   
   // -- PHONE STATE --
   const [phoneStep, setPhoneStep] = useState<'phone' | 'otp'>('phone');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [otp, setOtp] = useState('');
 
-  // 1. EMAIL SIGN UP HANDLER
+  // 1. EMAIL SIGN UP HANDLER (Step 1: Send Code)
   const handleEmailSignUp = async () => {
     if (!fullName.trim() || !signUpEmail.trim() || !signUpPassword.trim()) {
       toast({ title: 'Missing Information', description: 'Please fill in all fields', variant: 'destructive' });
@@ -119,7 +121,7 @@ function RegisterForms({ onLoading, isLoading, onGoogleLogin }: { onLoading: (v:
         password: signUpPassword,
         options: {
           data: {
-            full_name: fullName, // Saves to metadata, accessible by triggers
+            full_name: fullName,
           }
         }
       });
@@ -127,15 +129,46 @@ function RegisterForms({ onLoading, isLoading, onGoogleLogin }: { onLoading: (v:
       if (error) throw error;
 
       if (data.user) {
-        // Optional: Manual profile update if your trigger isn't set up yet
-        await supabase.from('profiles').update({ full_name: fullName }).eq('id', data.user.id);
-
-        toast({ title: 'Success', description: 'Account created! Please check your email to confirm.' });
-        // Redirect or show confirmation message
-        router.push('/login'); 
+        // If account created successfully, move to OTP step
+        toast({ title: 'Account Created', description: `Please check ${signUpEmail} for your verification code.` });
+        setEmailStep('otp'); 
       }
     } catch (error: any) {
       toast({ title: 'Registration Failed', description: error.message, variant: 'destructive' });
+    } finally {
+      onLoading(false);
+    }
+  };
+
+  // 1.5 EMAIL VERIFY OTP (Step 2: Verify 8-digit Code)
+  const handleVerifyEmailOTP = async () => {
+    // 8-Digit Validation
+    if (!emailOtp.trim() || emailOtp.length !== 8) {
+      toast({ title: 'Invalid Code', description: 'Enter 8-digit code', variant: 'destructive' });
+      return;
+    }
+
+    onLoading(true);
+    try {
+      const { data, error } = await supabase.auth.verifyOtp({
+        email: signUpEmail,
+        token: emailOtp,
+        type: 'signup' // Verifying a new registration
+      });
+
+      if (error) throw error;
+
+      if (data.user) {
+        // Ensure profile name is updated
+        if (fullName) {
+          await supabase.from('profiles').upsert({ id: data.user.id, full_name: fullName }).select();
+        }
+
+        toast({ title: 'Success', description: 'Email verified successfully!' });
+        router.push('/'); // Login success
+      }
+    } catch (error: any) {
+      toast({ title: 'Verification Failed', description: error.message, variant: 'destructive' });
     } finally {
       onLoading(false);
     }
@@ -156,13 +189,10 @@ function RegisterForms({ onLoading, isLoading, onGoogleLogin }: { onLoading: (v:
     try {
       const formattedPhone = phoneNumber.startsWith('+88') ? phoneNumber : `+88${phoneNumber}`;
       
-      // We pass the name in metadata so it can be saved upon creation
       const { error } = await supabase.auth.signInWithOtp({ 
         phone: formattedPhone,
         options: {
-            data: {
-                full_name: fullName
-            }
+            data: { full_name: fullName }
         }
       });
 
@@ -179,6 +209,7 @@ function RegisterForms({ onLoading, isLoading, onGoogleLogin }: { onLoading: (v:
 
   // 3. PHONE OTP VERIFY
   const handleVerifyOTP = async () => {
+    // 8-Digit Validation for Phone too
     if (!otp.trim() || otp.length !== 8) {
       toast({ title: 'Invalid OTP', description: 'Enter 8-digit code', variant: 'destructive' });
       return;
@@ -196,13 +227,11 @@ function RegisterForms({ onLoading, isLoading, onGoogleLogin }: { onLoading: (v:
       if (error) throw error;
 
       if (data.user) {
-        // Ensure name is saved in profile
         if (fullName) {
              await supabase.from('profiles')
                 .upsert({ id: data.user.id, full_name: fullName, phone: formattedPhone })
                 .select();
         }
-
         toast({ title: 'Success', description: 'Account verified successfully' });
         router.push('/');
       }
@@ -284,65 +313,96 @@ function RegisterForms({ onLoading, isLoading, onGoogleLogin }: { onLoading: (v:
         )}
       </TabsContent>
 
-      {/* EMAIL TAB */}
+      {/* EMAIL TAB (Updated with OTP Step) */}
       <TabsContent value="email" className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="email-name">Full Name</Label>
-          <div className="relative">
-            <User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-            <Input
-              id="email-name"
-              placeholder="John Doe"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-        </div>
+        {emailStep === 'details' ? (
+           <>
+            <div className="space-y-2">
+            <Label htmlFor="email-name">Full Name</Label>
+            <div className="relative">
+                <User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                <Input
+                id="email-name"
+                placeholder="John Doe"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                className="pl-10"
+                />
+            </div>
+            </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="email">Email</Label>
-          <div className="relative">
-            <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-            <Input
-              id="email"
-              type="email"
-              placeholder="name@example.com"
-              value={signUpEmail}
-              onChange={(e) => setSignUpEmail(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="password">Password</Label>
-          <div className="relative">
-            <Input
-              id="password"
-              type={showPassword ? 'text' : 'password'}
-              placeholder="••••••••"
-              value={signUpPassword}
-              onChange={(e) => setSignUpPassword(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleEmailSignUp()}
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
-            >
-              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </button>
-          </div>
-          <p className="text-xs text-gray-500">Must be at least 6 characters</p>
-        </div>
-        <Button onClick={handleEmailSignUp} disabled={isLoading} className="w-full bg-blue-900 hover:bg-blue-800">
-          {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Sign Up'}
-        </Button>
-        <div className="text-center text-sm">
-            <Link href="/login" className="text-blue-900 hover:underline">
-            Already have an account? Sign In
-            </Link>
-        </div>
+            <div className="space-y-2">
+            <Label htmlFor="email">Email</Label>
+            <div className="relative">
+                <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                <Input
+                id="email"
+                type="email"
+                placeholder="name@example.com"
+                value={signUpEmail}
+                onChange={(e) => setSignUpEmail(e.target.value)}
+                className="pl-10"
+                />
+            </div>
+            </div>
+            <div className="space-y-2">
+            <Label htmlFor="password">Password</Label>
+            <div className="relative">
+                <Input
+                id="password"
+                type={showPassword ? 'text' : 'password'}
+                placeholder="••••••••"
+                value={signUpPassword}
+                onChange={(e) => setSignUpPassword(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleEmailSignUp()}
+                />
+                <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+                >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+            </div>
+            <p className="text-xs text-gray-500">Must be at least 6 characters</p>
+            </div>
+            <Button onClick={handleEmailSignUp} disabled={isLoading} className="w-full bg-blue-900 hover:bg-blue-800">
+            {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Sign Up'}
+            </Button>
+           </>
+        ) : (
+            // --- NEW EMAIL OTP UI ---
+            <div className="space-y-4 animate-in fade-in slide-in-from-right-4">
+                <div className="text-center bg-blue-50 p-3 rounded-md">
+                   <p className="text-sm text-blue-900">Enter code sent to <br/><span className="font-bold">{signUpEmail}</span></p>
+                </div>
+                <div className="space-y-2">
+                 <Label htmlFor="emailOtp">Verification Code</Label>
+                 <Input
+                   id="emailOtp"
+                   placeholder="00000000"
+                   value={emailOtp}
+                   onChange={(e) => setEmailOtp(e.target.value.replace(/\D/g, ''))}
+                   maxLength={8} // 8 Digit Max Length
+                   className="text-center text-xl tracking-widest font-bold"
+                 />
+               </div>
+               <Button onClick={handleVerifyEmailOTP} disabled={isLoading} className="w-full bg-blue-900 hover:bg-blue-800">
+                 {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Verify Email'}
+               </Button>
+               <Button variant="ghost" onClick={() => setEmailStep('details')} className="w-full text-gray-500">
+                 Change Email
+               </Button>
+             </div>
+        )}
+        
+        {emailStep === 'details' && (
+             <div className="text-center text-sm">
+                <Link href="/login" className="text-blue-900 hover:underline">
+                Already have an account? Sign In
+                </Link>
+            </div>
+        )}
       </TabsContent>
 
       <div className="relative my-6">
