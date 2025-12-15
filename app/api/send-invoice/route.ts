@@ -1,6 +1,4 @@
-// app/api/send-invoice/route.ts
 import { NextResponse } from 'next/server';
-import nodemailer from 'nodemailer';
 import { getInvoiceData, generateEmailInvoiceHTML } from '@/lib/invoice/invoice-generator';
 
 export async function POST(req: Request) {
@@ -11,7 +9,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing orderId or email' }, { status: 400 });
     }
 
-    console.log(`Sending inline invoice for ${orderId} to ${email}...`);
+    console.log(`Sending API invoice for ${orderId} to ${email}...`);
 
     // 1. Fetch Invoice Data
     const invoiceData = await getInvoiceData(orderId);
@@ -19,39 +17,56 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invoice data not found' }, { status: 404 });
     }
 
-    // 2. Generate Email HTML
+    // 2. Generate HTML
     const emailHtml = generateEmailInvoiceHTML(invoiceData);
 
-    // 3. Configure Transporter (PLAN B: PORT 587)
-    const transporter = nodemailer.createTransport({
-      host: 'smtp-relay.brevo.com', // Use the main domain again
-      port: 587,                    // <--- CHANGE TO 587
-      secure: false,                // <--- CHANGE TO FALSE (Required for 587)
-      auth: {
-        user: '9d0a00001@smtp-brevo.com',
-        pass: process.env.BREVO_SMTP_KEY || process.env.SMTP_PASSWORD,
-      },
-      // NETWORK SETTINGS
-      family: 4,              // Keep IPv4 (Vital)
-      connectionTimeout: 60000, 
-      greetingTimeout: 30000,   
-      logger: true,           
-      debug: true             
-    } as any);
+    // 3. Prepare Brevo API Request
+    const apiKey = process.env.BREVO_API_KEY; // NEW VARIABLE
+    
+    if (!apiKey) {
+      console.error("Missing BREVO_API_KEY");
+      return NextResponse.json({ error: "Server config error: Missing API Key" }, { status: 500 });
+    }
 
-    // 4. Send Email
-    const info = await transporter.sendMail({
-      from: '"Spraxe Support" <9d0a00001@smtp-brevo.com>',
-      to: email,
+    const payload = {
+      sender: {
+        name: "Spraxe Support",
+        email: "9d0a00001@smtp-brevo.com" // Must match your verified sender in Brevo
+      },
+      to: [
+        {
+          email: email,
+          name: invoiceData.customer.name
+        }
+      ],
       subject: `Order #${invoiceData.invoiceNumber} Confirmation`,
-      html: emailHtml,
+      htmlContent: emailHtml
+    };
+
+    // 4. Send via HTTP (Port 443 - Never Blocked)
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'accept': 'application/json',
+        'api-key': apiKey,
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify(payload)
     });
 
-    console.log('Message sent: %s', info.messageId);
-    return NextResponse.json({ success: true, messageId: info.messageId });
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error("Brevo API Error:", errorData);
+      throw new Error(`Brevo API Failed: ${errorData.message || response.statusText}`);
+    }
+
+    const data = await response.json();
+    console.log('Email sent via API:', data.messageId);
+
+    return NextResponse.json({ success: true, messageId: data.messageId });
 
   } catch (error: any) {
-    console.error('Email Error:', error);
+    console.error('Email Failed:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
