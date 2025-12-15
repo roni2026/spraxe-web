@@ -35,15 +35,26 @@ const formatCurrency = (amount: number) => {
 };
 
 export async function getInvoiceData(orderId: string): Promise<InvoiceData | null> {
+  console.log("--- DEBUGGING INVOICE GENERATION ---");
   console.log("Fetching invoice for Order ID:", orderId);
 
-  // STEP 1: Fetch Order
-  const { data: orderData } = await supabase
+  // STEP 1: Fetch Order & Profile
+  // We select EVERYTHING (*) to see what columns exist in the logs
+  const { data: orderData, error: orderError } = await supabase
     .from('orders')
     .select(`*, profiles ( full_name, email, phone )`)
     .eq('id', orderId)
     .maybeSingle();
 
+  // --- DEBUG LOGS FOR ORDER ---
+  if (orderError) console.error("Database Error (Orders):", orderError.message);
+  console.log("RAW ORDER DATA:", orderData ? "Found" : "Null");
+  if (orderData) {
+      console.log("Order Columns found:", Object.keys(orderData));
+      console.log("Profile Data:", orderData.profiles);
+  }
+
+  // Fallback object
   const order = orderData || {
     id: orderId,
     order_number: 'ORD-MISSING',
@@ -57,16 +68,26 @@ export async function getInvoiceData(orderId: string): Promise<InvoiceData | nul
   };
 
   // STEP 2: Fetch Items
-  const { data: orderItems } = await supabase
+  // We select EVERYTHING (*) to see if column names are different
+  const { data: orderItems, error: itemsError } = await supabase
     .from('order_items')
-    .select('product_name, quantity, unit_price, total_price')
+    .select('*') 
     .eq('order_id', orderId);
 
+  // --- DEBUG LOGS FOR ITEMS ---
+  if (itemsError) console.error("Database Error (Items):", itemsError.message);
+  console.log("RAW ITEMS COUNT:", orderItems?.length || 0);
+  if (orderItems && orderItems.length > 0) {
+    console.log("Item Columns found:", Object.keys(orderItems[0]));
+    console.log("First Item Sample:", orderItems[0]);
+  }
+
+  // MAPPING LOGIC (Adjust this based on what you see in logs!)
   const items = orderItems?.map((item: any) => ({
-    name: item.product_name || 'Product',
+    name: item.product_name || item.name || item.title || 'Product',
     quantity: safeNum(item.quantity),
-    price: safeNum(item.unit_price),
-    total: safeNum(item.total_price)
+    price: safeNum(item.unit_price || item.price),
+    total: safeNum(item.total_price || item.total)
   })) || [];
 
   if (!orderData && items.length > 0) {
@@ -108,9 +129,13 @@ export async function getInvoiceData(orderId: string): Promise<InvoiceData | nul
 
   // STEP 4: Customer Details
   const profile = order.profiles && (Array.isArray(order.profiles) ? order.profiles[0] : order.profiles);
-  const customerName = profile?.full_name || 'Valued Customer';
-  const customerPhone = order.contact_number || profile?.phone || 'N/A';
-  const customerAddress = order.shipping_address || order.delivery_location || 'Address not provided';
+  
+  // Try multiple common column names for phone/address
+  const customerName = profile?.full_name || order.customer_name || 'Valued Customer';
+  const customerPhone = order.contact_number || order.phone || profile?.phone || 'N/A';
+  const customerAddress = order.shipping_address || order.address || order.delivery_location || 'Address not provided';
+
+  console.log("Final Customer Data Mapped:", { customerName, customerPhone, customerAddress });
 
   return {
     invoiceNumber: invoice.invoice_number,
