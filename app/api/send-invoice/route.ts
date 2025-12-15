@@ -1,7 +1,6 @@
 // app/api/send-invoice/route.ts
 import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
-import { supabase } from '@/lib/supabase/client'; // Adjust path if needed
 import { getInvoiceData, generateInvoiceHTML } from '@/lib/invoice/invoice-generator';
 
 export async function POST(req: Request) {
@@ -17,9 +16,12 @@ export async function POST(req: Request) {
     // 1. Fetch Invoice Data
     const invoiceData = await getInvoiceData(orderId);
     if (!invoiceData) {
+      console.error(`Invoice data not found for order: ${orderId}`);
       return NextResponse.json({ error: 'Invoice data not found' }, { status: 404 });
     }
 
+    console.log("Generating virtual invoice...");
+    
     // 2. Generate HTML
     const invoiceHtml = generateInvoiceHTML(invoiceData);
 
@@ -27,17 +29,22 @@ export async function POST(req: Request) {
     const transporter = nodemailer.createTransport({
       host: 'smtp-relay.brevo.com',
       port: 465,
-      secure: true, // true for 465, false for other ports
+      secure: true, // true for 465
       auth: {
         user: '9d0a00001@smtp-brevo.com', // Your Brevo Login
-        pass: process.env.BREVO_SMTP_KEY, // STORE THIS IN .env.local FILE!
+        pass: process.env.BREVO_SMTP_KEY, // Ensure this matches your .env variable name
       },
+      // 👇 THIS IS THE FIX FOR RENDER TIMEOUTS 👇
+      family: 4, 
     });
 
-    // 4. Send Email
+    // 4. Verify Connection (Optional but good for debugging)
+    await transporter.verify(); 
+
+    // 5. Send Email
     const info = await transporter.sendMail({
-      from: '"Spraxe Support" <support@spraxe.com>', // Sender address
-      to: email, // Receiver address
+      from: '"Spraxe Support" <9d0a00001@smtp-brevo.com>', // Use your authenticated email or verified domain
+      to: email, 
       subject: `Invoice for Order #${invoiceData.invoiceNumber}`,
       html: `
         <div style="font-family: Arial, sans-serif; color: #333;">
@@ -53,7 +60,7 @@ export async function POST(req: Request) {
         {
           filename: `Invoice-${invoiceData.invoiceNumber}.html`,
           content: invoiceHtml,
-          contentType: 'text/html', // Sends as a viewable HTML file (works like a PDF in browser)
+          contentType: 'text/html',
         },
       ],
     });
@@ -65,8 +72,4 @@ export async function POST(req: Request) {
     console.error('Email Error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-
 }
-
-
-
