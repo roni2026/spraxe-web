@@ -77,6 +77,7 @@ export function EmailAuthDialog({ open, onOpenChange }: EmailAuthDialogProps) {
       if (error) throw error;
 
       if (data.user) {
+        // Fetch profile to check role
         const { data: profile } = await supabase
           .from('profiles')
           .select('role')
@@ -84,9 +85,14 @@ export function EmailAuthDialog({ open, onOpenChange }: EmailAuthDialogProps) {
           .single();
 
         toast({ title: 'Success', description: 'Logged in successfully' });
+        
+        // Reset and Close
         onOpenChange(false);
+        setSignInEmail('');
+        setSignInPassword('');
         
         if (profile?.role === 'admin') router.push('/admin');
+        else router.refresh();
       }
     } catch (error: any) {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
@@ -120,6 +126,7 @@ export function EmailAuthDialog({ open, onOpenChange }: EmailAuthDialogProps) {
 
       if (error) throw error;
 
+      // If successful, move to verification step
       setIsVerifying(true);
       toast({
         title: 'Check your email',
@@ -127,14 +134,30 @@ export function EmailAuthDialog({ open, onOpenChange }: EmailAuthDialogProps) {
       });
 
     } catch (error: any) {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+      // --- CUSTOM ERROR MESSAGE FOR EXISTING USER ---
+      // Note: This requires "Prevent user enumeration" to be OFF in Supabase Dashboard
+      if (
+        error.message.includes('already registered') || 
+        error.message.includes('already exists') ||
+        error.status === 422
+      ) {
+        toast({ 
+          title: 'Account Exists', 
+          description: 'You already have an account at Spraxe. Please Sign In.', 
+          variant: 'destructive' 
+        });
+        // Optional: you can assume the user wants to sign in now
+        // But for now we just show the error.
+      } else {
+        toast({ title: 'Error', description: error.message, variant: 'destructive' });
+      }
     } finally {
       setLoading(false);
     }
   };
 
  const handleVerify = async () => {
-    // UPDATED: Check for 8 digits
+    // 1. Validate 8 digits
     if (!code || code.length < 8) {
       toast({ title: 'Invalid Code', description: 'Please enter the 8-digit verification code.', variant: 'destructive' });
       return;
@@ -151,23 +174,36 @@ export function EmailAuthDialog({ open, onOpenChange }: EmailAuthDialogProps) {
       if (error) throw error;
 
       if (data.user) {
+        // 2. Insert Profile (Including Email)
         const { error: profileError } = await supabase.from('profiles').insert({
           id: data.user.id,
           full_name: signUpFullName,
+          email: signUpEmail, // <--- SAVING EMAIL HERE
           role: 'customer',
         });
         
-        if (profileError) console.error('Profile creation error:', profileError);
+        // Use upsert in case a trigger already created a partial row
+        if (profileError) {
+            console.log("Insert failed, trying upsert...");
+            await supabase.from('profiles').upsert({
+                id: data.user.id,
+                full_name: signUpFullName,
+                email: signUpEmail,
+                role: 'customer'
+            });
+        }
       }
 
       toast({ title: 'Success', description: 'Account verified and logged in!' });
       
+      // Cleanup
       onOpenChange(false);
       setSignUpEmail('');
       setSignUpPassword('');
       setSignUpFullName('');
       setCode('');
       setIsVerifying(false);
+      router.refresh();
 
     } catch (error: any) {
       toast({ title: 'Verification Failed', description: error.message, variant: 'destructive' });
@@ -268,11 +304,11 @@ export function EmailAuthDialog({ open, onOpenChange }: EmailAuthDialogProps) {
                   <Label htmlFor="code">Verification Code</Label>
                   <Input
                     id="code"
-                    placeholder="12345678" // Updated placeholder
+                    placeholder="12345678"
                     value={code}
                     onChange={(e) => setCode(e.target.value)}
                     className="text-center text-lg tracking-widest"
-                    maxLength={8} // UPDATED: Changed from 6 to 8
+                    maxLength={8}
                   />
                 </div>
 
