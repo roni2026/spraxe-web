@@ -11,61 +11,58 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing orderId or email' }, { status: 400 });
     }
 
-    console.log(`Sending invoice for ${orderId} to ${email}...`);
+    console.log(`Sending inline invoice for ${orderId} to ${email}...`);
 
     // 1. Fetch Invoice Data
     const invoiceData = await getInvoiceData(orderId);
     if (!invoiceData) {
-      console.error(`Invoice data not found for order: ${orderId}`);
       return NextResponse.json({ error: 'Invoice data not found' }, { status: 404 });
     }
 
     // 2. Generate HTML
-    const invoiceHtml = generateInvoiceHTML(invoiceData);
+    // We wrap the invoice in a centered container for better email viewing
+    const rawInvoiceHtml = generateInvoiceHTML(invoiceData);
+    
+    // Email clients usually need a specific wrapper to look good
+    const emailBody = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Invoice #${invoiceData.invoiceNumber}</title>
+      </head>
+      <body style="margin: 0; padding: 0; background-color: #f4f4f5; font-family: Arial, sans-serif;">
+        <div style="max-width: 800px; margin: 0 auto; background-color: #ffffff; padding: 20px;">
+            ${rawInvoiceHtml} 
+        </div>
+        
+        <div style="text-align: center; padding: 20px; color: #666; font-size: 12px;">
+           <p>Thank you for shopping with Spraxe.</p>
+           <a href="${process.env.NEXT_PUBLIC_APP_URL}/invoice/${orderId}" style="color: #1e3a8a;">View in Browser</a>
+        </div>
+      </body>
+      </html>
+    `;
 
-    // 3. Resolve Password (Handle undefined TS error)
-    const smtpPassword = process.env.BREVO_SMTP_KEY || process.env.SMTP_PASSWORD;
-
-    if (!smtpPassword) {
-      console.error('Missing SMTP Password in Environment Variables');
-      return NextResponse.json({ error: 'Server Misconfiguration' }, { status: 500 });
-    }
-
-    // 4. Configure Brevo SMTP Transporter
-    // We cast to 'any' here to fix the "No overload matches this call" TypeScript error
+    // 3. Configure Transporter
     const transporter = nodemailer.createTransport({
       host: 'smtp-relay.brevo.com',
       port: 465,
       secure: true,
       auth: {
         user: '9d0a00001@smtp-brevo.com',
-        pass: smtpPassword,
+        pass: process.env.BREVO_SMTP_KEY || process.env.SMTP_PASSWORD,
       },
-      family: 4, // Forces IPv4 (Fixes Render Timeout)
+      family: 4, 
     } as any);
 
-    // 5. Send Email
+    // 4. Send Email (NO ATTACHMENTS, JUST HTML)
     const info = await transporter.sendMail({
       from: '"Spraxe Support" <9d0a00001@smtp-brevo.com>',
       to: email,
-      subject: `Invoice for Order #${invoiceData.invoiceNumber}`,
-      html: `
-        <div style="font-family: Arial, sans-serif; color: #333;">
-          <h2>Thank you for your order!</h2>
-          <p>Hi ${invoiceData.customer.name},</p>
-          <p>Your order <strong>#${invoiceData.invoiceNumber}</strong> is now <strong>Processing</strong>.</p>
-          <p>Please find your invoice attached.</p>
-          <br/>
-          <p>Best regards,<br/>Spraxe Team</p>
-        </div>
-      `,
-      attachments: [
-        {
-          filename: `Invoice-${invoiceData.invoiceNumber}.html`,
-          content: invoiceHtml,
-          contentType: 'text/html',
-        },
-      ],
+      subject: `Order #${invoiceData.invoiceNumber} Confirmation`,
+      html: emailBody, // <--- The invoice is now the body of the email
     });
 
     console.log('Message sent: %s', info.messageId);
