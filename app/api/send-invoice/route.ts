@@ -26,7 +26,7 @@ export async function POST(req: Request) {
     // 3. Configure Brevo SMTP Transporter
     const transporter = nodemailer.createTransport({
       host: 'smtp-relay.brevo.com',
-      port: 587,
+      port: 465,
       secure: false, // true for 465, false for other ports
       auth: {
         user: '9d0a00001@smtp-brevo.com', // Your Brevo Login
@@ -65,4 +65,5 @@ export async function POST(req: Request) {
     console.error('Email Error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
 }
