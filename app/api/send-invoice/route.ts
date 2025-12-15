@@ -1,7 +1,8 @@
 // app/api/send-invoice/route.ts
 import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
-import { getInvoiceData, generateInvoiceHTML } from '@/lib/invoice/invoice-generator';
+// 👇 IMPORTANT: Import the Email version, not the standard version
+import { getInvoiceData, generateEmailInvoiceHTML } from '@/lib/invoice/invoice-generator';
 
 export async function POST(req: Request) {
   try {
@@ -19,31 +20,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invoice data not found' }, { status: 404 });
     }
 
-    // 2. Generate HTML
-    // We wrap the invoice in a centered container for better email viewing
-    const rawInvoiceHtml = generateInvoiceHTML(invoiceData);
-    
-    // Email clients usually need a specific wrapper to look good
-    const emailBody = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Invoice #${invoiceData.invoiceNumber}</title>
-      </head>
-      <body style="margin: 0; padding: 0; background-color: #f4f4f5; font-family: Arial, sans-serif;">
-        <div style="max-width: 800px; margin: 0 auto; background-color: #ffffff; padding: 20px;">
-            ${rawInvoiceHtml} 
-        </div>
-        
-        <div style="text-align: center; padding: 20px; color: #666; font-size: 12px;">
-           <p>Thank you for shopping with Spraxe.</p>
-           <a href="${process.env.NEXT_PUBLIC_APP_URL}/invoice/${orderId}" style="color: #1e3a8a;">View in Browser</a>
-        </div>
-      </body>
-      </html>
-    `;
+    // 2. Generate Email-Safe HTML (Tables instead of Flexbox)
+    // The function generateEmailInvoiceHTML already includes <html>, <body>, etc.
+    const emailHtml = generateEmailInvoiceHTML(invoiceData);
 
     // 3. Configure Transporter
     const transporter = nodemailer.createTransport({
@@ -51,18 +30,18 @@ export async function POST(req: Request) {
       port: 465,
       secure: true,
       auth: {
-        user: '9d0a00001@smtp-brevo.com',
+        user: '9d0a00001@smtp-brevo.com', // Brevo Login
         pass: process.env.BREVO_SMTP_KEY || process.env.SMTP_PASSWORD,
       },
-      family: 4, 
+      family: 4, // Forces IPv4 (Critical for Render/Brevo timeouts)
     } as any);
 
-    // 4. Send Email (NO ATTACHMENTS, JUST HTML)
+    // 4. Send Email
     const info = await transporter.sendMail({
       from: '"Spraxe Support" <9d0a00001@smtp-brevo.com>',
       to: email,
       subject: `Order #${invoiceData.invoiceNumber} Confirmation`,
-      html: emailBody, // <--- The invoice is now the body of the email
+      html: emailHtml, // <--- Send the generated HTML directly
     });
 
     console.log('Message sent: %s', info.messageId);
