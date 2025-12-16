@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { 
   ArrowLeft, Send, User, Mail, Phone, 
-  ShoppingBag, Calendar, AlertTriangle, CheckCircle 
+  ShoppingBag, Calendar, AlertTriangle 
 } from 'lucide-react';
 import Link from 'next/link';
 import {
@@ -47,8 +47,8 @@ export default function TicketDetailPage({ params }: TicketPageProps) {
   }, [user, profile]);
 
   const fetchTicketDetails = async () => {
-    // 1. Fetch Ticket & Profile
-    const { data: ticketData } = await supabase
+    // 1. Fetch Ticket & Profile info using JOIN
+    const { data: ticketData, error } = await supabase
       .from('support_tickets')
       .select(`*, profiles:user_id (*)`)
       .eq('id', params.ticketId)
@@ -95,6 +95,15 @@ export default function TicketDetailPage({ params }: TicketPageProps) {
     if (!replyMessage.trim()) return;
     setIsSending(true);
 
+    // Determines the email address to send to
+    const targetEmail = ticket.profiles?.email || ticket.email;
+
+    if (!targetEmail) {
+      toast({ title: 'Error', description: 'No email address found for this ticket.', variant: 'destructive' });
+      setIsSending(false);
+      return;
+    }
+
     try {
       // 1. Send Email via Brevo API Route
       const response = await fetch('/api/support/reply', {
@@ -102,7 +111,7 @@ export default function TicketDetailPage({ params }: TicketPageProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ticketId: ticket.id,
-          customerEmail: ticket.profiles?.email,
+          customerEmail: targetEmail, // Uses fallback logic
           subject: ticket.subject,
           message: replyMessage,
           agentName: profile?.full_name || 'Support Agent'
@@ -111,7 +120,7 @@ export default function TicketDetailPage({ params }: TicketPageProps) {
 
       if (!response.ok) throw new Error('Failed to send email');
 
-      // 2. Update Ticket Status to 'resolved' (or keep in progress if you prefer)
+      // 2. Update Ticket Status to 'resolved'
       await supabase
         .from('support_tickets')
         .update({ status: 'resolved', updated_at: new Date().toISOString() })
@@ -130,6 +139,9 @@ export default function TicketDetailPage({ params }: TicketPageProps) {
   };
 
   if (!ticket) return <div className="p-10 text-center">Loading Ticket...</div>;
+
+  const displayEmail = ticket.profiles?.email || ticket.email || 'No Email Provided';
+  const displayName = ticket.profiles?.full_name || 'Guest User';
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -180,7 +192,7 @@ export default function TicketDetailPage({ params }: TicketPageProps) {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <User className="w-4 h-4 text-gray-500" />
-                    <span className="font-semibold">{ticket.profiles?.full_name}</span>
+                    <span className="font-semibold">{displayName}</span>
                     <span className="text-xs text-gray-400">wrote:</span>
                   </div>
                   <span className="text-xs text-gray-400">
@@ -204,7 +216,7 @@ export default function TicketDetailPage({ params }: TicketPageProps) {
               <CardContent className="pt-4 space-y-4">
                 <div className="bg-blue-50 p-3 rounded text-xs text-blue-800 flex items-center gap-2">
                   <Mail className="w-3 h-3" />
-                  Reply will be sent to: <strong>{ticket.profiles?.email}</strong>
+                  Reply will be sent to: <strong>{displayEmail}</strong>
                 </div>
                 
                 <Textarea 
@@ -242,16 +254,16 @@ export default function TicketDetailPage({ params }: TicketPageProps) {
               <CardContent className="pt-4 space-y-3 text-sm">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold">
-                    {ticket.profiles?.full_name?.charAt(0) || 'U'}
+                    {displayName.charAt(0) || 'U'}
                   </div>
                   <div>
-                    <div className="font-semibold">{ticket.profiles?.full_name}</div>
+                    <div className="font-semibold">{displayName}</div>
                     <div className="text-xs text-gray-500">Customer</div>
                   </div>
                 </div>
                 <div className="space-y-2 mt-4">
                   <div className="flex items-center gap-2 text-gray-600">
-                    <Mail className="w-3.5 h-3.5" /> {ticket.profiles?.email}
+                    <Mail className="w-3.5 h-3.5" /> {displayEmail}
                   </div>
                   <div className="flex items-center gap-2 text-gray-600">
                     <Phone className="w-3.5 h-3.5" /> {ticket.profiles?.phone || 'No Phone'}
