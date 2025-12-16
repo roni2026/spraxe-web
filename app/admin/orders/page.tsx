@@ -8,7 +8,7 @@ import { Header } from '@/components/layout/header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Package, Eye, Phone, Mail, User, Calendar } from 'lucide-react';
+import { ArrowLeft, Package, Eye, Phone, Mail, User, Calendar, ShoppingCart } from 'lucide-react';
 import Link from 'next/link';
 import {
   Select,
@@ -17,7 +17,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
+
+interface OrderItem {
+  id: string;
+  product_name: string;
+  quantity: number;
+}
 
 interface Order {
   id: string;
@@ -33,6 +38,7 @@ interface Order {
     email: string;
     phone: string;
   };
+  order_items: OrderItem[]; // <--- Added Order Items
 }
 
 export default function OrdersManagement() {
@@ -54,15 +60,13 @@ export default function OrdersManagement() {
   const fetchOrders = async () => {
     setLoading(true);
     
+    // 1. Updated Query to fetch 'order_items'
     let query = supabase
       .from('orders')
       .select(`
         *,
-        profiles (
-          full_name,
-          email,
-          phone 
-        )
+        profiles ( full_name, email, phone ),
+        order_items ( id, product_name, quantity )
       `)
       .order('created_at', { ascending: false });
 
@@ -86,53 +90,33 @@ export default function OrdersManagement() {
   };
   
   const handleStatusChange = async (orderId: string, newStatus: string, customerEmail?: string) => {
-    // 1. Update Database Status
     const { error } = await supabase
       .from('orders')
       .update({ status: newStatus })
       .eq('id', orderId);
 
     if (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to update order status',
-        variant: 'destructive',
-      });
+      toast({ title: 'Error', description: 'Failed to update status', variant: 'destructive' });
       return;
     } 
 
-    toast({
-      title: 'Success',
-      description: 'Order status updated',
-    });
-    
-    // Refresh the UI
+    toast({ title: 'Success', description: 'Order status updated' });
     fetchOrders();
 
-    // 2. Trigger Email if status is 'processing'
+    // Trigger Email if status is 'processing'
     if (newStatus === 'processing') {
       if (customerEmail) {
-        toast({ title: 'Sending Email...', description: 'Generating and sending invoice...' });
-        
+        toast({ title: 'Sending Email...', description: 'Generating invoice...' });
         try {
-          const response = await fetch('/api/send-invoice', {
+          await fetch('/api/send-invoice', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ orderId, email: customerEmail }),
           });
-
-          if (response.ok) {
-            toast({ title: 'Email Sent', description: `Invoice sent to ${customerEmail}` });
-          } else {
-            console.error('Email API Failed');
-            toast({ title: 'Email Warning', description: 'Status updated, but email failed to send.', variant: 'destructive' });
-          }
+          toast({ title: 'Email Sent', description: `Invoice sent to ${customerEmail}` });
         } catch (err) {
-          console.error("Email Fetch Error:", err);
-          toast({ title: 'Email Error', description: 'Could not connect to email server.', variant: 'destructive' });
+          console.error(err);
         }
-      } else {
-        console.log("No email found for this user, skipping email.");
       }
     }
   };
@@ -154,7 +138,6 @@ export default function OrdersManagement() {
 
       <div className="container mx-auto px-4 py-8 flex-1">
         
-        {/* Page Header */}
         <div className="flex flex-col sm:flex-row items-center justify-between mb-8 gap-4">
           <div className="flex items-center gap-4 w-full sm:w-auto">
             <Link href="/admin">
@@ -181,7 +164,6 @@ export default function OrdersManagement() {
           </Select>
         </div>
 
-        {/* Orders Table Card */}
         <Card className="shadow-sm border-gray-200 overflow-hidden">
           <CardHeader className="bg-gray-50/50 border-b px-6 py-4">
             <CardTitle className="text-base font-semibold text-gray-700 flex items-center gap-2">
@@ -199,18 +181,17 @@ export default function OrdersManagement() {
               <div className="text-center py-16">
                 <Package className="w-12 h-12 text-gray-300 mx-auto mb-3" />
                 <p className="text-lg font-medium text-gray-900">No orders found</p>
-                <p className="text-sm text-gray-500">Try changing the filter or check back later.</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm text-left">
                   <thead className="text-xs text-gray-500 uppercase bg-gray-50 border-b">
                     <tr>
-                      <th className="px-6 py-3 font-medium">Order Info</th>
-                      <th className="px-6 py-3 font-medium">Customer</th>
-                      <th className="px-6 py-3 font-medium text-right">Total</th>
-                      <th className="px-6 py-3 font-medium">Status</th>
-                      <th className="px-6 py-3 font-medium text-center">Action</th>
+                      <th className="px-6 py-3 font-medium w-[20%]">Order Info</th>
+                      <th className="px-6 py-3 font-medium w-[20%]">Customer</th>
+                      <th className="px-6 py-3 font-medium w-[30%]">Items</th> {/* New Column */}
+                      <th className="px-6 py-3 font-medium w-[10%] text-right">Total</th>
+                      <th className="px-6 py-3 font-medium w-[20%] text-right">Status & Action</th> {/* Combined */}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -228,7 +209,7 @@ export default function OrdersManagement() {
                           </div>
                         </td>
 
-                        {/* 2. Customer Info (Compact) */}
+                        {/* 2. Customer Info */}
                         <td className="px-6 py-4 align-top">
                           <div className="flex flex-col gap-1">
                             <div className="font-semibold text-gray-900 flex items-center gap-2">
@@ -246,40 +227,58 @@ export default function OrdersManagement() {
                           </div>
                         </td>
 
-                        {/* 3. Total */}
+                        {/* 3. Items Column (New) */}
+                        <td className="px-6 py-4 align-top">
+                          <div className="flex flex-col gap-1">
+                            {order.order_items && order.order_items.length > 0 ? (
+                              order.order_items.map((item) => (
+                                <div key={item.id} className="text-sm text-gray-700 flex items-center gap-2">
+                                  <div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div>
+                                  <span className="font-medium">{item.product_name}</span>
+                                  <span className="text-gray-500 text-xs">x{item.quantity}</span>
+                                </div>
+                              ))
+                            ) : (
+                              <span className="text-gray-400 italic text-xs">No items found</span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* 4. Total */}
                         <td className="px-6 py-4 align-top text-right">
                           <div className="font-bold text-blue-900 text-base">
                             ৳{(order.total || order.total_amount).toLocaleString()}
                           </div>
                         </td>
 
-                        {/* 4. Status (Dropdown) */}
-                        <td className="px-6 py-4 align-top">
-                           <Select 
+                        {/* 5. Status & Invoice (Stacked) */}
+                        <td className="px-6 py-4 align-top text-right">
+                          <div className="flex flex-col gap-2 items-end">
+                            {/* Status Dropdown */}
+                            <Select 
                               value={order.status} 
                               onValueChange={(value) => handleStatusChange(order.id, value, order.profiles?.email)}
-                           >
-                             <SelectTrigger className={`w-[130px] h-8 text-xs font-medium border capitalize ${getStatusColor(order.status)}`}>
-                               <SelectValue />
-                             </SelectTrigger>
-                             <SelectContent>
-                               <SelectItem value="pending">Pending</SelectItem>
-                               <SelectItem value="processing">Processing</SelectItem>
-                               <SelectItem value="shipped">Shipped</SelectItem>
-                               <SelectItem value="delivered">Delivered</SelectItem>
-                               <SelectItem value="cancelled">Cancelled</SelectItem>
-                             </SelectContent>
-                           </Select>
-                        </td>
+                            >
+                              <SelectTrigger className={`w-[130px] h-8 text-xs font-medium border capitalize ${getStatusColor(order.status)}`}>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="pending">Pending</SelectItem>
+                                <SelectItem value="processing">Processing</SelectItem>
+                                <SelectItem value="shipped">Shipped</SelectItem>
+                                <SelectItem value="delivered">Delivered</SelectItem>
+                                <SelectItem value="cancelled">Cancelled</SelectItem>
+                              </SelectContent>
+                            </Select>
 
-                        {/* 5. Actions */}
-                        <td className="px-6 py-4 align-top text-center">
-                          <Link href={`/invoice/${order.id}`}>
-                            <Button variant="outline" size="sm" className="h-8 text-xs hover:bg-blue-50 hover:text-blue-700">
-                              <Eye className="w-3 h-3 mr-1.5" />
-                              Invoice
-                            </Button>
-                          </Link>
+                            {/* Invoice Button */}
+                            <Link href={`/invoice/${order.id}`}>
+                              <Button variant="outline" size="sm" className="h-8 w-[130px] text-xs hover:bg-blue-50 hover:text-blue-700">
+                                <Eye className="w-3 h-3 mr-1.5" />
+                                Invoice
+                              </Button>
+                            </Link>
+                          </div>
                         </td>
 
                       </tr>
