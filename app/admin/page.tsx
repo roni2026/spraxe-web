@@ -6,7 +6,6 @@ import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/lib/auth/auth-context';
 import { Header } from '@/components/layout/header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   Package, 
   ShoppingBag, 
@@ -16,7 +15,8 @@ import {
   List, 
   Image as ImageIcon, 
   FileText,
-  Settings
+  Settings,
+  ChevronRight
 } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -24,22 +24,28 @@ import { Button } from '@/components/ui/button';
 export default function AdminDashboard() {
   const { user, profile } = useAuth();
   const router = useRouter();
+  
   const [stats, setStats] = useState({
     products: 0,
     orders: 0,
     customers: 0,
     pendingOrders: 0,
   });
+  
+  const [recentOrders, setRecentOrders] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!user || profile?.role !== 'admin') {
       router.push('/');
       return;
     }
-    fetchStats();
+    fetchDashboardData();
   }, [user, profile]);
 
-  const fetchStats = async () => {
+  const fetchDashboardData = async () => {
+    setLoading(true);
+    // 1. Fetch Stats
     const [products, orders, customers, pending] = await Promise.all([
       supabase.from('products').select('id', { count: 'exact', head: true }),
       supabase.from('orders').select('id', { count: 'exact', head: true }),
@@ -53,7 +59,29 @@ export default function AdminDashboard() {
       customers: customers.count || 0,
       pendingOrders: pending.count || 0,
     });
+
+    // 2. Fetch Recent Orders (Last 10)
+    const { data: recentOrdersData } = await supabase
+      .from('orders')
+      .select(`
+        id, 
+        order_number, 
+        total, 
+        status, 
+        created_at, 
+        profiles ( full_name, email )
+      `)
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    if (recentOrdersData) {
+      setRecentOrders(recentOrdersData);
+    }
+    setLoading(false);
   };
+
+  // Helper to get display name
+  const adminName = profile?.full_name || user?.email?.split('@')[0] || 'Admin';
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
@@ -72,7 +100,25 @@ export default function AdminDashboard() {
             </CardHeader>
             <CardContent className="p-4 space-y-3">
               
-              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 mt-1">Catalog</div>
+              {/* SALES SECTION (Moved to Top) */}
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 mt-1">Sales</div>
+
+              <Link href="/admin/orders" className="block">
+                <Button variant="outline" className="w-full justify-start hover:bg-blue-50 hover:text-blue-700" size="sm">
+                  <FileText className="mr-2 h-4 w-4" />
+                  View All Orders
+                </Button>
+              </Link>
+
+               <Link href="/admin/customers" className="block">
+                <Button variant="outline" className="w-full justify-start hover:bg-blue-50 hover:text-blue-700" size="sm">
+                  <Users className="mr-2 h-4 w-4" />
+                  View Customers
+                </Button>
+              </Link>
+
+              {/* CATALOG SECTION */}
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 mt-4">Catalog</div>
               
               <Link href="/admin/products/new" className="block">
                 <Button className="w-full justify-start bg-blue-900 hover:bg-blue-800" size="sm">
@@ -95,22 +141,6 @@ export default function AdminDashboard() {
                 </Button>
               </Link>
 
-              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 mt-4">Sales</div>
-
-              <Link href="/admin/orders" className="block">
-                <Button variant="outline" className="w-full justify-start hover:bg-blue-50 hover:text-blue-700" size="sm">
-                  <FileText className="mr-2 h-4 w-4" />
-                  View All Orders
-                </Button>
-              </Link>
-
-               <Link href="/admin/customers" className="block">
-                <Button variant="outline" className="w-full justify-start hover:bg-blue-50 hover:text-blue-700" size="sm">
-                  <Users className="mr-2 h-4 w-4" />
-                  View Customers
-                </Button>
-              </Link>
-
             </CardContent>
           </Card>
         </aside>
@@ -120,7 +150,9 @@ export default function AdminDashboard() {
           
           <div className="flex items-center justify-between">
             <h1 className="text-3xl font-bold text-gray-900">Dashboard Overview</h1>
-            <span className="text-sm text-gray-500">Welcome back, Admin</span>
+            <span className="text-base font-medium text-blue-900 bg-blue-50 px-3 py-1 rounded-full border border-blue-100">
+              Welcome, {adminName}
+            </span>
           </div>
 
           {/* Stats Grid */}
@@ -166,59 +198,74 @@ export default function AdminDashboard() {
             </Card>
           </div>
 
-          {/* Management Tabs */}
-          <Tabs defaultValue="products" className="space-y-6">
-            <TabsList className="bg-white border p-1 h-auto">
-              <TabsTrigger value="products" className="px-6 py-2">Products</TabsTrigger>
-              <TabsTrigger value="orders" className="px-6 py-2">Orders</TabsTrigger>
-              <TabsTrigger value="customers" className="px-6 py-2">Customers</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="products">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Product Management</CardTitle>
-                </CardHeader>
-                <CardContent className="flex flex-col items-center justify-center py-10 text-center space-y-4">
-                  <Package className="w-12 h-12 text-gray-300" />
-                  <p className="text-gray-600 max-w-sm">Manage your inventory, update prices, and organize your catalog.</p>
-                  <Link href="/admin/products/new">
-                    <Button variant="outline">Create New Product</Button>
-                  </Link>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="orders">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Order Management</CardTitle>
-                </CardHeader>
-                <CardContent className="flex flex-col items-center justify-center py-10 text-center space-y-4">
-                  <ShoppingBag className="w-12 h-12 text-gray-300" />
-                  <p className="text-gray-600 max-w-sm">Process new orders, handle shipping, and manage returns.</p>
-                  <Link href="/admin/orders">
-                    <Button variant="outline">View All Orders</Button>
-                  </Link>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="customers">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Customer Management</CardTitle>
-                </CardHeader>
-                <CardContent className="flex flex-col items-center justify-center py-10 text-center space-y-4">
-                  <Users className="w-12 h-12 text-gray-300" />
-                  <p className="text-gray-600 max-w-sm">View customer profiles and order history.</p>
-                  <Link href="/admin/customers">
-                    <Button variant="outline">View Customer List</Button>
-                  </Link>
-                </CardContent>
-              </Card>
-            </TabsContent>
-          </Tabs>
+          {/* RECENT ORDERS TABLE (Replaced Tabs) */}
+          <Card className="shadow-md border-gray-200">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="text-xl text-gray-800">Recent Orders</CardTitle>
+              <Link href="/admin/orders">
+                <Button variant="ghost" size="sm" className="text-blue-600 hover:text-blue-800 hover:bg-blue-50">
+                  View All Orders <ChevronRight className="ml-1 h-4 w-4" />
+                </Button>
+              </Link>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="text-center py-10 text-gray-500">Loading orders...</div>
+              ) : recentOrders.length === 0 ? (
+                <div className="text-center py-10 text-gray-500">No orders found.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm text-left">
+                    <thead className="text-xs text-gray-700 uppercase bg-gray-50 border-b">
+                      <tr>
+                        <th className="px-4 py-3">Order ID</th>
+                        <th className="px-4 py-3">Customer</th>
+                        <th className="px-4 py-3">Date</th>
+                        <th className="px-4 py-3">Status</th>
+                        <th className="px-4 py-3 text-right">Total</th>
+                        <th className="px-4 py-3 text-center">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {recentOrders.map((order) => (
+                        <tr key={order.id} className="bg-white border-b hover:bg-gray-50 transition-colors">
+                          <td className="px-4 py-3 font-medium text-gray-900">
+                            {order.order_number || order.id.slice(0, 8)}
+                          </td>
+                          <td className="px-4 py-3">
+                            {order.profiles?.full_name || order.profiles?.email || 'Guest'}
+                          </td>
+                          <td className="px-4 py-3 text-gray-500">
+                            {new Date(order.created_at).toLocaleDateString()}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                              order.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                              order.status === 'processing' ? 'bg-blue-100 text-blue-800' :
+                              order.status === 'completed' ? 'bg-green-100 text-green-800' :
+                              'bg-gray-100 text-gray-800'
+                            }`}>
+                              {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right font-medium">
+                            ৳{order.total}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <Link href={`/admin/orders/${order.id}`}>
+                              <Button variant="outline" size="sm" className="h-7 text-xs">
+                                Details
+                              </Button>
+                            </Link>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
         </main>
       </div>
