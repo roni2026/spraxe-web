@@ -16,7 +16,9 @@ import {
   Image as ImageIcon, 
   FileText,
   Settings,
-  ChevronRight
+  ChevronRight,
+  MessageSquare, // Icon for Support Tickets
+  LifeBuoy       // Icon for Unresolved Tickets
 } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -30,6 +32,7 @@ export default function AdminDashboard() {
     orders: 0,
     customers: 0,
     pendingOrders: 0,
+    unresolvedTickets: 0, // New Stat
   });
   
   const [recentOrders, setRecentOrders] = useState<any[]>([]);
@@ -46,11 +49,13 @@ export default function AdminDashboard() {
   const fetchDashboardData = async () => {
     setLoading(true);
     // 1. Fetch Stats
-    const [products, orders, customers, pending] = await Promise.all([
+    const [products, orders, customers, pending, tickets] = await Promise.all([
       supabase.from('products').select('id', { count: 'exact', head: true }),
       supabase.from('orders').select('id', { count: 'exact', head: true }),
       supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'customer'),
       supabase.from('orders').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+      // Fetch Unresolved Tickets (status = 'open')
+      supabase.from('support_tickets').select('id', { count: 'exact', head: true }).eq('status', 'open'),
     ]);
 
     setStats({
@@ -58,10 +63,10 @@ export default function AdminDashboard() {
       orders: orders.count || 0,
       customers: customers.count || 0,
       pendingOrders: pending.count || 0,
+      unresolvedTickets: tickets.count || 0,
     });
 
     // 2. Fetch Recent Orders (Last 10)
-    // UPDATED: Now fetching 'contact_number' from orders and 'phone' from profiles
     const { data: recentOrdersData } = await supabase
       .from('orders')
       .select(`
@@ -117,6 +122,16 @@ export default function AdminDashboard() {
                 </Button>
               </Link>
 
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 mt-4">Support</div>
+              
+              {/* NEW: Support Ticket Option */}
+              <Link href="/admin/support" className="block">
+                <Button variant="outline" className="w-full justify-start hover:bg-blue-50 hover:text-blue-700" size="sm">
+                  <MessageSquare className="mr-2 h-4 w-4" />
+                  Support Tickets
+                </Button>
+              </Link>
+
               <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 mt-4">Catalog</div>
               
               <Link href="/admin/products/new" className="block">
@@ -155,7 +170,7 @@ export default function AdminDashboard() {
           </div>
 
           {/* Stats Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6"> {/* Changed grid-cols-4 to grid-cols-5 for new card */}
             <Card className="border-l-4 border-l-blue-600 shadow-sm hover:shadow-md transition-shadow">
               <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle className="text-sm font-medium text-gray-600">Total Products</CardTitle>
@@ -195,6 +210,18 @@ export default function AdminDashboard() {
                 <div className="text-2xl font-bold text-orange-600">{stats.pendingOrders}</div>
               </CardContent>
             </Card>
+
+            {/* NEW: Unresolved Tickets Card */}
+            <Card className="border-l-4 border-l-red-500 shadow-sm hover:shadow-md transition-shadow">
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium text-gray-600">Unresolved Tickets</CardTitle>
+                <LifeBuoy className="w-4 h-4 text-red-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-red-600">{stats.unresolvedTickets}</div>
+              </CardContent>
+            </Card>
+
           </div>
 
           {/* RECENT ORDERS TABLE */}
@@ -219,7 +246,7 @@ export default function AdminDashboard() {
                       <tr>
                         <th className="px-4 py-3">Order ID</th>
                         <th className="px-4 py-3">Customer</th>
-                        <th className="px-4 py-3">Phone</th> {/* NEW COLUMN */}
+                        <th className="px-4 py-3">Phone</th>
                         <th className="px-4 py-3">Date</th>
                         <th className="px-4 py-3">Status</th>
                         <th className="px-4 py-3 text-right">Total</th>
@@ -235,7 +262,6 @@ export default function AdminDashboard() {
                           <td className="px-4 py-3">
                             {order.profiles?.full_name || order.profiles?.email || 'Guest'}
                           </td>
-                          {/* NEW: Display Phone Number */}
                           <td className="px-4 py-3 font-mono text-gray-600">
                              {order.contact_number || order.profiles?.phone || 'N/A'}
                           </td>
