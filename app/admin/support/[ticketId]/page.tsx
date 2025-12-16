@@ -37,6 +37,7 @@ export default function TicketDetailPage({ params }: TicketPageProps) {
   const [customerStats, setCustomerStats] = useState<any>(null);
   const [replyMessage, setReplyMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [errorState, setErrorState] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user || profile?.role !== 'admin') {
@@ -47,17 +48,42 @@ export default function TicketDetailPage({ params }: TicketPageProps) {
   }, [user, profile]);
 
   const fetchTicketDetails = async () => {
-    // 1. Fetch Ticket & Profile info using JOIN
-    const { data: ticketData, error } = await supabase
-      .from('support_tickets')
-      .select(`*, profiles:user_id (*)`)
-      .eq('id', params.ticketId)
-      .single();
+    try {
+      // 1. Try to fetch Ticket WITH Profile data
+      let { data: ticketData, error } = await supabase
+        .from('support_tickets')
+        .select(`*, profiles:user_id (*)`)
+        .eq('id', params.ticketId)
+        .single();
 
-    if (ticketData) {
+      // 2. Fallback: If JOIN fails (e.g. no profile found), fetch JUST the ticket
+      if (error || !ticketData) {
+        console.warn("Join fetch failed, trying fallback...", error);
+        const { data: rawTicket, error: rawError } = await supabase
+          .from('support_tickets')
+          .select('*')
+          .eq('id', params.ticketId)
+          .single();
+          
+        if (rawError) throw rawError;
+        
+        // Use raw ticket data, and set profiles to null for now
+        ticketData = { ...rawTicket, profiles: null };
+        
+        // Try to fetch profile manually if user_id exists
+        if (rawTicket.user_id) {
+           const { data: p } = await supabase
+             .from('profiles')
+             .select('*')
+             .eq('id', rawTicket.user_id)
+             .single();
+           if (p) ticketData.profiles = p;
+        }
+      }
+
       setTicket(ticketData);
 
-      // 2. Fetch Related Order (if exists)
+      // 3. Fetch Related Order (if exists)
       if (ticketData.order_id) {
         const { data: orderData } = await supabase
           .from('orders')
@@ -67,7 +93,7 @@ export default function TicketDetailPage({ params }: TicketPageProps) {
         setRelatedOrder(orderData);
       }
 
-      // 3. Fetch Customer Stats
+      // 4. Fetch Customer Stats (if user exists)
       if (ticketData.user_id) {
         const { count } = await supabase
           .from('orders')
@@ -76,6 +102,10 @@ export default function TicketDetailPage({ params }: TicketPageProps) {
         
         setCustomerStats({ totalOrders: count });
       }
+
+    } catch (err: any) {
+      console.error("Critical Error Fetching Ticket:", err);
+      setErrorState(err.message || "Failed to load ticket.");
     }
   };
 
@@ -95,7 +125,7 @@ export default function TicketDetailPage({ params }: TicketPageProps) {
     if (!replyMessage.trim()) return;
     setIsSending(true);
 
-    // Determines the email address to send to
+    // Determines the email address to send to (Prioritize Profile email, then Ticket email)
     const targetEmail = ticket.profiles?.email || ticket.email;
 
     if (!targetEmail) {
@@ -111,7 +141,7 @@ export default function TicketDetailPage({ params }: TicketPageProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ticketId: ticket.id,
-          customerEmail: targetEmail, // Uses fallback logic
+          customerEmail: targetEmail,
           subject: ticket.subject,
           message: replyMessage,
           agentName: profile?.full_name || 'Support Agent'
@@ -132,13 +162,33 @@ export default function TicketDetailPage({ params }: TicketPageProps) {
 
     } catch (error) {
       console.error(error);
-      toast({ title: 'Error', description: 'Failed to send email.', variant: 'destructive' });
+      toast({ title: 'Error', description: 'Failed to send email. Check console.', variant: 'destructive' });
     } finally {
       setIsSending(false);
     }
   };
 
-  if (!ticket) return <div className="p-10 text-center">Loading Ticket...</div>;
+  if (errorState) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 flex-col gap-4">
+        <AlertTriangle className="w-10 h-10 text-red-500" />
+        <h2 className="text-xl font-bold text-gray-800">Error Loading Ticket</h2>
+        <p className="text-gray-500">{errorState}</p>
+        <Link href="/admin/support">
+          <Button variant="outline">Go Back</Button>
+        </Link>
+      </div>
+    );
+  }
+
+  if (!ticket) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 flex-col gap-4">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-900"></div>
+        <p className="text-gray-500">Loading Ticket Details...</p>
+      </div>
+    );
+  }
 
   const displayEmail = ticket.profiles?.email || ticket.email || 'No Email Provided';
   const displayName = ticket.profiles?.full_name || 'Guest User';
@@ -150,7 +200,7 @@ export default function TicketDetailPage({ params }: TicketPageProps) {
       <div className="container mx-auto px-4 py-6 flex-1">
         
         {/* Top Navigation Bar */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-6 gap-4">
           <div className="flex items-center gap-3">
             <Link href="/admin/support">
               <Button variant="ghost" size="icon"><ArrowLeft className="w-5 h-5" /></Button>
@@ -162,13 +212,13 @@ export default function TicketDetailPage({ params }: TicketPageProps) {
                   {ticket.status.toUpperCase()}
                 </Badge>
               </div>
-              <h1 className="text-2xl font-bold text-gray-900">{ticket.subject}</h1>
+              <h1 className="text-xl md:text-2xl font-bold text-gray-900 mt-1">{ticket.subject}</h1>
             </div>
           </div>
           
-          <div className="flex gap-2">
+          <div className="flex gap-2 w-full md:w-auto">
             <Select value={ticket.status} onValueChange={handleUpdateStatus}>
-              <SelectTrigger className="w-[160px] bg-white">
+              <SelectTrigger className="w-full md:w-[160px] bg-white">
                 <SelectValue placeholder="Change Status" />
               </SelectTrigger>
               <SelectContent>
@@ -226,12 +276,12 @@ export default function TicketDetailPage({ params }: TicketPageProps) {
                   onChange={(e) => setReplyMessage(e.target.value)}
                 />
 
-                <div className="flex justify-between items-center">
-                  <div className="text-xs text-gray-400">
+                <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+                  <div className="text-xs text-gray-400 text-center md:text-left">
                     Pressing send will also mark ticket as <strong>Resolved</strong>.
                   </div>
                   <Button 
-                    className="bg-blue-900 hover:bg-blue-800 min-w-[150px]" 
+                    className="bg-blue-900 hover:bg-blue-800 w-full md:w-auto min-w-[150px]" 
                     onClick={handleSendReply}
                     disabled={isSending}
                   >
@@ -263,7 +313,8 @@ export default function TicketDetailPage({ params }: TicketPageProps) {
                 </div>
                 <div className="space-y-2 mt-4">
                   <div className="flex items-center gap-2 text-gray-600">
-                    <Mail className="w-3.5 h-3.5" /> {displayEmail}
+                    <Mail className="w-3.5 h-3.5" /> 
+                    <span className="truncate max-w-[200px]">{displayEmail}</span>
                   </div>
                   <div className="flex items-center gap-2 text-gray-600">
                     <Phone className="w-3.5 h-3.5" /> {ticket.profiles?.phone || 'No Phone'}
