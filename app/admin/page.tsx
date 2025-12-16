@@ -61,6 +61,7 @@ export default function AdminDashboard() {
     });
 
     // 2. Fetch Recent Orders (Last 10)
+    // UPDATED: Now fetching 'contact_number' from orders and 'phone' from profiles
     const { data: recentOrdersData } = await supabase
       .from('orders')
       .select(`
@@ -69,7 +70,8 @@ export default function AdminDashboard() {
         total, 
         status, 
         created_at, 
-        profiles ( full_name, email )
+        contact_number,
+        profiles ( full_name, email, phone )
       `)
       .order('created_at', { ascending: false })
       .limit(10);
@@ -80,7 +82,6 @@ export default function AdminDashboard() {
     setLoading(false);
   };
 
-  // Helper to get display name
   const adminName = profile?.full_name || user?.email?.split('@')[0] || 'Admin';
 
   return (
@@ -100,7 +101,6 @@ export default function AdminDashboard() {
             </CardHeader>
             <CardContent className="p-4 space-y-3">
               
-              {/* SALES SECTION (Moved to Top) */}
               <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 mt-1">Sales</div>
 
               <Link href="/admin/orders" className="block">
@@ -117,7 +117,6 @@ export default function AdminDashboard() {
                 </Button>
               </Link>
 
-              {/* CATALOG SECTION */}
               <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 mt-4">Catalog</div>
               
               <Link href="/admin/products/new" className="block">
@@ -198,7 +197,7 @@ export default function AdminDashboard() {
             </Card>
           </div>
 
-          {/* RECENT ORDERS TABLE (Replaced Tabs) */}
+          {/* RECENT ORDERS TABLE */}
           <Card className="shadow-md border-gray-200">
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-xl text-gray-800">Recent Orders</CardTitle>
@@ -220,6 +219,7 @@ export default function AdminDashboard() {
                       <tr>
                         <th className="px-4 py-3">Order ID</th>
                         <th className="px-4 py-3">Customer</th>
+                        <th className="px-4 py-3">Phone</th> {/* NEW COLUMN */}
                         <th className="px-4 py-3">Date</th>
                         <th className="px-4 py-3">Status</th>
                         <th className="px-4 py-3 text-right">Total</th>
@@ -234,6 +234,10 @@ export default function AdminDashboard() {
                           </td>
                           <td className="px-4 py-3">
                             {order.profiles?.full_name || order.profiles?.email || 'Guest'}
+                          </td>
+                          {/* NEW: Display Phone Number */}
+                          <td className="px-4 py-3 font-mono text-gray-600">
+                             {order.contact_number || order.profiles?.phone || 'N/A'}
                           </td>
                           <td className="px-4 py-3 text-gray-500">
                             {new Date(order.created_at).toLocaleDateString()}
@@ -252,7 +256,7 @@ export default function AdminDashboard() {
                             ৳{order.total}
                           </td>
                           <td className="px-4 py-3 text-center">
-                            <Link href={`/admin/orders/${order.id}`}>
+                            <Link href={`/invoice/${order.id}`}>
                               <Button variant="outline" size="sm" className="h-7 text-xs">
                                 Details
                               </Button>
