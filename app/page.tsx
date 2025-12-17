@@ -425,38 +425,47 @@ export default function HomePage() {
 
       {/* FLOATING HELP BUTTON */}
       {showHelpText && (
-        <div className="fixed bottom-6 right-6 z-50 flex flex-col items-center space-y-2">
-          {/* Messenger & WhatsApp buttons */}
+        <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
+          
+          {/* Expanded buttons */}
           {expanded && (
-            <div className="flex flex-col space-y-2 mb-2">
-              <a href="https://m.me/yourpage" target="_blank" rel="noopener noreferrer" className="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-white shadow-lg hover:bg-blue-700 transition">
-                <MessageSquare size={24} />
+            <div className="flex flex-col gap-3 mb-3 items-end">
+              <a
+                href="https://m.me/yourpage"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-white shadow-lg hover:bg-blue-700 transition"
+              >
+                <MessageSquare size={22} />
               </a>
-              <a href="https://wa.me/your-number" target="_blank" rel="noopener noreferrer" className="w-12 h-12 rounded-full bg-green-500 flex items-center justify-center text-white shadow-lg hover:bg-green-600 transition">
-                <Phone size={24} />
+
+              <a
+                href="https://wa.me/1234567890"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-12 h-12 rounded-full bg-green-500 flex items-center justify-center text-white shadow-lg hover:bg-green-600 transition"
+              >
+                <Phone size={22} />
               </a>
             </div>
           )}
 
-          {/* Need Help? text */}
+          {/* Need Help text (LEFT of button) */}
           {!expanded && (
-            <div className="flex items-center space-x-1 mb-1 animate-fade-in">
-              <span className="bg-white px-3 py-1 rounded-full shadow text-gray-900 font-medium">Need help?</span>
-              <span className="text-white text-xl animate-bounce">→</span>
+            <div className="flex items-center gap-2 mb-2 animate-fade-in">
+              <span className="bg-white px-3 py-1 rounded-full shadow text-sm font-medium text-gray-900">
+                Need help?
+              </span>
+              <span className="text-white text-lg animate-pulse">→</span>
             </div>
           )}
 
-          {/* Main round button */}
+          {/* Main round toggle button */}
           <button
             onClick={() => setExpanded(!expanded)}
-            className="w-14 h-14 rounded-full bg-blue-600 flex items-center justify-center text-white shadow-lg hover:bg-blue-700 transition"
+            className="w-14 h-14 rounded-full bg-blue-600 flex items-center justify-center text-white shadow-xl hover:bg-blue-700 transition"
           >
-            <MessageSquare size={28} />
+            <MessageSquare size={26} />
           </button>
         </div>
       )}
-
-      <Footer />
-    </div>
-  );
-}
