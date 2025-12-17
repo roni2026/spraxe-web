@@ -1,5 +1,4 @@
 // app/api/support/confirm/route.ts
-
 import { NextResponse } from 'next/server';
 
 export async function POST(req: Request) {
@@ -8,20 +7,14 @@ export async function POST(req: Request) {
 
     // 1. Validation
     if (!ticketNumber || !customerEmail) {
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
     // 2. API Key Check
     const apiKey = process.env.BREVO_API_KEY;
     if (!apiKey) {
       console.error('Missing BREVO_API_KEY');
-      return NextResponse.json(
-        { error: 'Server configuration error' },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: 'Server config error', status: 500 });
     }
 
     console.log(`Sending ticket confirmation: ${ticketNumber}`);
@@ -32,47 +25,32 @@ export async function POST(req: Request) {
         name: 'Spraxe Support',
         email: 'spraxecare@gmail.com', // Must be verified in Brevo
       },
-      to: [
-        {
-          email: customerEmail,
-        },
-      ],
-      subject: `Ticket Received – ${ticketNumber}`,
+      to: [{ email: customerEmail }],
+      subject: `🎫 Ticket Received – ${ticketNumber}`,
       htmlContent: `
         <div style="font-family: Arial, sans-serif; color: #333; line-height: 1.6;">
-          <h2 style="color: #1e3a8a;">🎫 Ticket Received</h2>
+          <div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:12px;padding:24px;box-shadow:0 4px 12px rgba(0,0,0,0.05);">
+            <h2 style="color:#1e3a8a;text-align:center;margin-bottom:16px;">Ticket Received</h2>
+            <p>Hello,</p>
+            <p>Thank you for contacting <strong>Spraxe Support</strong>. Your support request has been received successfully.</p>
 
-          <p>Hello,</p>
+            <div style="background:#f8fafc;padding:16px;border-left:4px solid #1e3a8a;margin:20px 0;text-align:center;font-size:16px;font-weight:bold;border-radius:6px;">
+              ${ticketNumber}
+            </div>
 
-          <p>
-            Thank you for contacting <strong>Spraxe Support</strong>.
-            Your support request has been successfully received.
-          </p>
+            <p>Our team will review your request and respond as soon as possible. Please keep this ticket number for reference.</p>
 
-          <div style="background:#f8fafc;padding:15px;border-left:4px solid #1e3a8a;margin:20px 0;">
-            <strong>Ticket Number:</strong><br>
-            <span style="font-size:16px;">${ticketNumber}</span>
+            <p>For urgent help, you can also reach us via:</p>
+            <ul>
+              <li>💬 Messenger: <a href="https://m.me/spraxe" target="_blank">m.me/spraxe</a></li>
+              <li>📱 WhatsApp: <a href="https://wa.me/01606087761" target="_blank">01606087761</a></li>
+            </ul>
+
+            <hr style="border:none;border-top:1px solid #eee;margin:24px 0;">
+            <p style="font-size:12px;color:#666;text-align:center;">
+              This is an automated message. Please do not reply directly to this email.
+            </p>
           </div>
-
-          <p>
-            Our support team will review your request and respond as soon as possible.
-            Please keep this ticket number for future reference.
-          </p>
-
-          <p>
-            If you need urgent help, you can also contact us via:
-          </p>
-
-          <ul>
-            <li>💬 Messenger: <a href="https://m.me/spraxe">m.me/spraxe</a></li>
-            <li>📱 WhatsApp: <a href="https://wa.me/01606087761">01606087761</a></li>
-          </ul>
-
-          <br>
-          <hr style="border:none;border-top:1px solid #eee;">
-          <p style="font-size:12px;color:#666;">
-            This is an automated message. Please do not reply directly to this email.
-          </p>
         </div>
       `,
     };
@@ -98,12 +76,8 @@ export async function POST(req: Request) {
     console.log('Confirmation email sent:', data.messageId);
 
     return NextResponse.json({ success: true });
-
   } catch (error: any) {
     console.error('Confirmation Email Failed:', error);
-    return NextResponse.json(
-      { error: error.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
