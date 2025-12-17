@@ -24,7 +24,7 @@ import {
   CarouselPrevious,
 } from '@/components/ui/carousel';
 
-// --- MAIN CATEGORIES TO DISPLAY ---
+// 1. DEFINE THE EXACT MAIN CATEGORIES YOU WANT TO SHOW
 const TARGET_CATEGORIES = [
   "Women’s Fashion",
   "Man’s Fashion",
@@ -48,29 +48,54 @@ export default function HomePage() {
   const [bestSellers, setBestSellers] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
-  const [featuredImages, setFeaturedImages] = useState<any[]>([]);
+  
   const [carouselApi, setCarouselApi] = useState<CarouselApi>();
   const [currentSlide, setCurrentSlide] = useState(0);
-  const carouselInterval = useRef<ReturnType<typeof setInterval> | null>(null);
-
+  const [featuredImages, setFeaturedImages] = useState<any[]>([]);
+  
   const [viewingProduct, setViewingProduct] = useState<Product | null>(null);
 
-  // Messenger + WhatsApp popup
-  const [showHelpText, setShowHelpText] = useState(false);
+  // --- Floating Help Button States ---
   const [expanded, setExpanded] = useState(false);
+  const [showHelpText, setShowHelpText] = useState(false);
 
+  // Show "Need help?" text after 5 seconds
+  useEffect(() => {
+    const timeout = setTimeout(() => setShowHelpText(true), 5000);
+    return () => clearTimeout(timeout);
+  }, []);
+
+  // Fetch products, categories, featured images
   useEffect(() => {
     const fetchData = async () => {
       const [productsRes, bestSellersRes, categoriesRes, featuredRes] = await Promise.all([
-        supabase.from('products').select('*').eq('is_active', true).eq('is_featured', true).limit(12),
-        supabase.from('products').select('*').eq('is_active', true).order('total_sales', { ascending: false }).limit(12),
-        supabase.from('categories').select('*').eq('is_active', true).limit(50), 
-        supabase.from('featured_images').select('*').eq('is_active', true).order('sort_order')
+        supabase
+          .from('products')
+          .select('*')
+          .eq('is_active', true)
+          .eq('is_featured', true)
+          .limit(12),
+        supabase
+          .from('products')
+          .select('*')
+          .eq('is_active', true)
+          .order('total_sales', { ascending: false })
+          .limit(12),
+        supabase
+          .from('categories')
+          .select('*')
+          .eq('is_active', true)
+          .limit(50), 
+        supabase
+          .from('featured_images')
+          .select('*')
+          .eq('is_active', true)
+          .order('sort_order')
       ]);
 
       if (productsRes.data) setProducts(productsRes.data);
       if (bestSellersRes.data) setBestSellers(bestSellersRes.data);
-
+      
       if (categoriesRes.data) {
         const sortMap = new Map(TARGET_CATEGORIES.map((name, i) => [name.toLowerCase(), i]));
         const filteredCategories = categoriesRes.data
@@ -82,7 +107,7 @@ export default function HomePage() {
           });
         setCategories(filteredCategories);
       }
-
+      
       if (featuredRes.data) setFeaturedImages(featuredRes.data);
       setLoading(false);
     };
@@ -90,30 +115,24 @@ export default function HomePage() {
     fetchData();
   }, []);
 
+  // Update current slide index
   useEffect(() => {
     if (!carouselApi) return;
     setCurrentSlide(carouselApi.selectedScrollSnap());
     carouselApi.on('select', () => setCurrentSlide(carouselApi.selectedScrollSnap()));
   }, [carouselApi]);
 
-  // --- Auto-slide carousel every 5s ---
+  // --- Auto-slide carousel every 5 seconds ---
   useEffect(() => {
     if (!carouselApi || featuredImages.length === 0) return;
-    carouselInterval.current = setInterval(() => {
+
+    const interval = setInterval(() => {
       const nextIndex = (carouselApi.selectedScrollSnap() + 1) % featuredImages.length;
       carouselApi.scrollTo(nextIndex);
     }, 5000);
 
-    return () => {
-      if (carouselInterval.current) clearInterval(carouselInterval.current);
-    };
+    return () => clearInterval(interval);
   }, [carouselApi, featuredImages]);
-
-  // --- Show "Need Help?" text after 5s ---
-  useEffect(() => {
-    const timer = setTimeout(() => setShowHelpText(true), 5000);
-    return () => clearTimeout(timer);
-  }, []);
 
   const handleAddToCart = async (productId: string, productName: string) => {
     try {
@@ -131,7 +150,7 @@ export default function HomePage() {
           className="aspect-square bg-gray-50 overflow-hidden relative cursor-zoom-in"
           onClick={() => setViewingProduct(product)}
         >
-          {product.images?.length ? (
+          {product.images?.[0] ? (
             <img
               src={product.images[0]}
               alt={product.name}
@@ -152,9 +171,14 @@ export default function HomePage() {
           </Link>
 
           <div className="mt-auto space-y-2">
-            <p className="text-base md:text-lg font-bold text-blue-900">৳{product.price || product.base_price}</p>
+            <p className="text-base md:text-lg font-bold text-blue-900">
+              ৳{product.price || product.base_price}
+            </p>
             <Button
-              onClick={(e) => { e.stopPropagation(); handleAddToCart(product.id, product.name); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleAddToCart(product.id, product.name);
+              }}
               className="w-full bg-blue-900 hover:bg-blue-800 h-9 text-xs md:text-sm font-medium"
               size="sm"
             >
@@ -171,17 +195,21 @@ export default function HomePage() {
     <div className="min-h-screen flex flex-col bg-gray-50">
       <Header />
 
-      {/* Hero Carousel */}
+      {/* Hero Section */}
       <section className="bg-white pt-4 pb-2">
         <div className="w-full max-w-[1800px] mx-auto px-4">
-          {/* Desktop Banner */}
+          {/* DESKTOP BANNER */}
           <div className="hidden md:block">
-            <Carousel className="w-full" opts={{ loop: true }}>
+            <Carousel className="w-full" opts={{ loop: true }} setApi={setCarouselApi}>
               <CarouselContent>
                 {featuredImages.map((item) => (
                   <CarouselItem key={item.id}>
                     <div className="relative h-[380px] w-full rounded-2xl overflow-hidden bg-gray-900 group">
-                      <img src={item.image_url} alt={item.title} className="w-full h-full object-cover opacity-90 transition-transform duration-700 group-hover:scale-105" />
+                      <img
+                        src={item.image_url}
+                        alt={item.title}
+                        className="w-full h-full object-cover opacity-90 transition-transform duration-700 group-hover:scale-105"
+                      />
                       <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/20 to-transparent flex flex-col justify-center px-16">
                         <div className="max-w-2xl space-y-4 animate-in fade-in slide-in-from-left-8 duration-700">
                           <h2 className="text-5xl font-extrabold text-white tracking-tight leading-tight">{item.title}</h2>
@@ -197,14 +225,18 @@ export default function HomePage() {
             </Carousel>
           </div>
 
-          {/* Mobile Banner */}
+          {/* MOBILE BANNER */}
           <div className="md:hidden">
             <Carousel opts={{ align: "start", loop: true }} className="w-full" setApi={setCarouselApi}>
               <CarouselContent>
                 {featuredImages.map((item) => (
                   <CarouselItem key={item.id}>
                     <div className="relative h-[160px] w-full rounded-xl overflow-hidden bg-gray-900">
-                      <img src={item.image_url} alt={item.title} className="w-full h-full object-cover opacity-90" />
+                      <img
+                        src={item.image_url}
+                        alt={item.title}
+                        className="w-full h-full object-cover opacity-90"
+                      />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent flex flex-col justify-end p-4">
                         <h3 className="text-xl font-bold text-white leading-tight">{item.title}</h3>
                         <p className="text-xs text-gray-200 line-clamp-1">{item.description}</p>
@@ -213,12 +245,24 @@ export default function HomePage() {
                   </CarouselItem>
                 ))}
               </CarouselContent>
+              <div className="flex justify-center gap-1.5 mt-2">
+                {featuredImages.map((_, index) => (
+                  <button
+                    key={index}
+                    onClick={() => carouselApi?.scrollTo(index)}
+                    className={`h-1.5 rounded-full transition-all ${
+                      currentSlide === index ? 'w-6 bg-blue-900' : 'w-1.5 bg-gray-300'
+                    }`}
+                    aria-label={`Go to slide ${index + 1}`}
+                  />
+                ))}
+              </div>
             </Carousel>
           </div>
         </div>
       </section>
 
-      {/* --- CATEGORY SECTION --- */}
+      {/* CATEGORY SECTION */}
       <section className="bg-white py-4 border-b border-gray-100">
         <div className="w-full max-w-[1800px] mx-auto px-4">
           <div className="flex items-center justify-between mb-3">
@@ -250,7 +294,9 @@ export default function HomePage() {
                             </div>
                           )}
                         </div>
-                        <span className="text-xs md:text-sm font-medium text-gray-900 group-hover:text-blue-700 leading-tight line-clamp-2 px-1">{cat.name}</span>
+                        <span className="text-xs md:text-sm font-medium text-gray-900 group-hover:text-blue-700 leading-tight line-clamp-2 px-1">
+                          {cat.name}
+                        </span>
                       </div>
                     </Link>
                   </CarouselItem>
@@ -261,7 +307,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* --- BEST SELLERS --- */}
+      {/* BEST SELLERS */}
       <section className="py-8 bg-gray-50">
         <div className="w-full max-w-[1800px] mx-auto px-4">
           <div className="flex items-center justify-between mb-4">
@@ -277,20 +323,31 @@ export default function HomePage() {
           {loading ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-2 md:gap-3">
               {[...Array(6)].map((_, i) => (
-                <Card key={i}><CardContent className="p-2"><Skeleton className="w-full aspect-square mb-2" /><Skeleton className="w-full h-3 mb-2" /><Skeleton className="w-3/4 h-3" /></CardContent></Card>
+                <Card key={i}>
+                  <CardContent className="p-2">
+                    <Skeleton className="w-full aspect-square mb-2" />
+                    <Skeleton className="w-full h-3 mb-2" />
+                    <Skeleton className="w-3/4 h-3" />
+                  </CardContent>
+                </Card>
               ))}
             </div>
           ) : bestSellers.length === 0 ? (
-            <div className="text-center py-8"><Package className="w-12 h-12 text-gray-300 mx-auto mb-3" /><p className="text-gray-600 text-sm">No best sellers yet</p></div>
+            <div className="text-center py-8">
+              <Package className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+              <p className="text-gray-600 text-sm">No best sellers yet</p>
+            </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-2 md:gap-3">
-              {bestSellers.map((product) => <ProductCard key={product.id} product={product} />)}
+              {bestSellers.map((product) => (
+                <ProductCard key={product.id} product={product} />
+              ))}
             </div>
           )}
         </div>
       </section>
 
-      {/* --- FEATURED PRODUCTS --- */}
+      {/* FEATURED PRODUCTS */}
       <section className="py-8 bg-white">
         <div className="w-full max-w-[1800px] mx-auto px-4">
           <div className="flex items-center justify-between mb-4">
@@ -306,20 +363,32 @@ export default function HomePage() {
           {loading ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-2 md:gap-3">
               {[...Array(12)].map((_, i) => (
-                <Card key={i}><CardContent className="p-2"><Skeleton className="w-full aspect-square mb-2" /><Skeleton className="w-full h-3 mb-2" /><Skeleton className="w-3/4 h-3" /></CardContent></Card>
+                <Card key={i}>
+                  <CardContent className="p-2">
+                    <Skeleton className="w-full aspect-square mb-2" />
+                    <Skeleton className="w-full h-3 mb-2" />
+                    <Skeleton className="w-3/4 h-3" />
+                  </CardContent>
+                </Card>
               ))}
             </div>
           ) : products.length === 0 ? (
-            <div className="text-center py-12"><Package className="w-16 h-16 text-gray-300 mx-auto mb-4" /><h3 className="text-xl font-semibold text-gray-900 mb-2">No Products Yet</h3><p className="text-gray-600 mb-4">Products will appear here once they are added.</p></div>
+            <div className="text-center py-12">
+              <Package className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">No Products Yet</h3>
+              <p className="text-gray-600 mb-4">Products will appear here once they are added.</p>
+            </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-2 md:gap-3">
-              {products.map((product) => <ProductCard key={product.id} product={product} />)}
+              {products.map((product) => (
+                <ProductCard key={product.id} product={product} />
+              ))}
             </div>
           )}
         </div>
       </section>
 
-      {/* --- IMAGE LIGHTBOX MODAL --- */}
+      {/* IMAGE VIEWER MODAL */}
       <Dialog open={!!viewingProduct} onOpenChange={(open) => !open && setViewingProduct(null)}>
         <DialogContent className="max-w-4xl bg-black/90 border-none text-white p-0 overflow-hidden">
           <div className="relative w-full h-[80vh] flex flex-col items-center justify-center p-4">
@@ -328,7 +397,11 @@ export default function HomePage() {
                 <CarouselContent>
                   {viewingProduct.images.map((img, index) => (
                     <CarouselItem key={index} className="flex items-center justify-center h-[70vh]">
-                      <img src={img} alt={`${viewingProduct.name} - ${index + 1}`} className="max-h-full max-w-full object-contain" />
+                      <img
+                        src={img}
+                        alt={`${viewingProduct.name} - ${index + 1}`}
+                        className="max-h-full max-w-full object-contain"
+                      />
                     </CarouselItem>
                   ))}
                 </CarouselContent>
@@ -341,6 +414,7 @@ export default function HomePage() {
                 <p>No images available</p>
               </div>
             )}
+
             <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-6 text-center">
               <h2 className="text-xl font-bold">{viewingProduct?.name}</h2>
               <p className="text-lg font-semibold text-blue-300">৳{viewingProduct?.price || viewingProduct?.base_price}</p>
@@ -349,31 +423,38 @@ export default function HomePage() {
         </DialogContent>
       </Dialog>
 
-      {/* --- MESSENGER + WHATSAPP FLOATING BUTTON --- */}
-      <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-2">
-        {showHelpText && !expanded && (
-          <div className="mb-2 px-3 py-2 bg-blue-900 text-white rounded shadow-lg animate-fade-in cursor-pointer" onClick={() => setExpanded(true)}>
-            Need help?
-          </div>
-        )}
-        {expanded && (
-          <>
-            <a href="https://m.me/yourpage" target="_blank" rel="noopener noreferrer">
-              <Button className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 h-10 w-44 text-xs">
-                <MessageSquare className="w-4 h-4" /> Messenger
-              </Button>
-            </a>
-            <a href="https://wa.me/1234567890" target="_blank" rel="noopener noreferrer">
-              <Button className="flex items-center gap-2 bg-green-500 hover:bg-green-400 h-10 w-44 text-xs">
-                <Phone className="w-4 h-4" /> WhatsApp
-              </Button>
-            </a>
-          </>
-        )}
-        <Button className="flex items-center justify-center bg-blue-900 hover:bg-blue-800 w-12 h-12 rounded-full shadow-lg" onClick={() => setExpanded(!expanded)}>
-          <MessageSquare className="w-5 h-5 text-white" />
-        </Button>
-      </div>
+      {/* FLOATING HELP BUTTON */}
+      {showHelpText && (
+        <div className="fixed bottom-6 right-6 z-50 flex flex-col items-center space-y-2">
+          {/* Messenger & WhatsApp buttons */}
+          {expanded && (
+            <div className="flex flex-col space-y-2 mb-2">
+              <a href="https://m.me/yourpage" target="_blank" rel="noopener noreferrer" className="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-white shadow-lg hover:bg-blue-700 transition">
+                <MessageSquare size={24} />
+              </a>
+              <a href="https://wa.me/your-number" target="_blank" rel="noopener noreferrer" className="w-12 h-12 rounded-full bg-green-500 flex items-center justify-center text-white shadow-lg hover:bg-green-600 transition">
+                <Phone size={24} />
+              </a>
+            </div>
+          )}
+
+          {/* Need Help? text */}
+          {!expanded && (
+            <div className="flex items-center space-x-1 mb-1 animate-fade-in">
+              <span className="bg-white px-3 py-1 rounded-full shadow text-gray-900 font-medium">Need help?</span>
+              <span className="text-white text-xl animate-bounce">→</span>
+            </div>
+          )}
+
+          {/* Main round button */}
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="w-14 h-14 rounded-full bg-blue-600 flex items-center justify-center text-white shadow-lg hover:bg-blue-700 transition"
+          >
+            <MessageSquare size={28} />
+          </button>
+        </div>
+      )}
 
       <Footer />
     </div>
