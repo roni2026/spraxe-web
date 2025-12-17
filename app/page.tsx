@@ -452,11 +452,11 @@ export default function HomePage() {
 
           {/* Need Help text (LEFT of button) */}
           {!expanded && (
-            <div className="flex items-center gap-2 mb-2 animate-fade-in">
+            <div className="flex items-center gap-2 mb-2">
               <span className="bg-white px-3 py-1 rounded-full shadow text-sm font-medium text-gray-900">
                 Need help?
               </span>
-              <span className="text-white text-lg animate-pulse">→</span>
+              <span className="text-gray-700 text-lg animate-pulse">→</span>
             </div>
           )}
 
@@ -469,3 +469,8 @@ export default function HomePage() {
           </button>
         </div>
       )}
+
+      <Footer />
+    </div>
+  );
+}
