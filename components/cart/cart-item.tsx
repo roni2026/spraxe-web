@@ -7,21 +7,27 @@ import { useCart } from '@/lib/cart/cart-context';
 interface CartItemProps {
   item: {
     id: string;
-    name: string;
-    price: number;
-    images?: string[];
     quantity: number;
-    // Add product_id if needed for links, otherwise id is usually fine
-    product_id?: string; 
+    product_id: string;
+    // The details are inside the 'product' object
+    product?: {
+      name: string;
+      price: number;
+      images?: string[];
+      slug?: string;
+    };
   };
 }
 
 export function CartItem({ item }: CartItemProps) {
-  // FIXED: Changed 'removeFromCart' to 'removeItem' to match your Context
   const { updateQuantity, removeItem } = useCart();
 
-  // Handle image URL safely
-  const imageUrl = item.images?.[0] || null;
+  // Safely access product details
+  const product = item.product;
+  if (!product) return null; // Don't render if product data is missing
+
+  const imageUrl = product.images?.[0] || null;
+  const totalPrice = (product.price || 0) * item.quantity;
 
   return (
     <div className="flex gap-4">
@@ -30,7 +36,7 @@ export function CartItem({ item }: CartItemProps) {
         {imageUrl ? (
           <img
             src={imageUrl}
-            alt={item.name}
+            alt={product.name}
             className="h-full w-full object-cover object-center"
           />
         ) : (
@@ -45,21 +51,23 @@ export function CartItem({ item }: CartItemProps) {
         <div>
           <div className="flex justify-between text-base font-medium text-gray-900">
             <h3 className="line-clamp-2 text-sm leading-tight pr-4">
-              {/* Ensure we link to the product page */}
-              <a href={`/products/${item.product_id || item.id}`}>{item.name}</a>
+              {/* Link to product page using slug or ID */}
+              <a href={`/products/${product.slug || item.product_id}`} className="hover:underline">
+                {product.name}
+              </a>
             </h3>
-            <p className="ml-4 flex-shrink-0">৳{item.price * item.quantity}</p>
+            <p className="ml-4 flex-shrink-0">৳{totalPrice}</p>
           </div>
-          <p className="mt-1 text-sm text-gray-500">Unit: ৳{item.price}</p>
+          <p className="mt-1 text-sm text-gray-500">Unit: ৳{product.price}</p>
         </div>
         
-        <div className="flex flex-1 items-end justify-between text-sm">
+        <div className="flex flex-1 items-end justify-between text-sm mt-2">
           {/* Quantity Controls */}
-          <div className="flex items-center border rounded-md h-8">
+          <div className="flex items-center border rounded-md h-7">
             <Button
               variant="ghost"
               size="icon"
-              className="h-full w-8 rounded-none rounded-l-md px-0"
+              className="h-full w-7 rounded-none rounded-l-md px-0"
               onClick={() => updateQuantity(item.id, Math.max(1, item.quantity - 1))}
               disabled={item.quantity <= 1}
             >
@@ -73,7 +81,7 @@ export function CartItem({ item }: CartItemProps) {
             <Button
               variant="ghost"
               size="icon"
-              className="h-full w-8 rounded-none rounded-r-md px-0"
+              className="h-full w-7 rounded-none rounded-r-md px-0"
               onClick={() => updateQuantity(item.id, item.quantity + 1)}
             >
               <Plus className="h-3 w-3" />
@@ -84,8 +92,7 @@ export function CartItem({ item }: CartItemProps) {
           <Button
             variant="ghost"
             size="sm"
-            className="text-red-500 hover:text-red-600 hover:bg-red-50 h-8 px-2"
-            // FIXED: Using removeItem here
+            className="text-red-500 hover:text-red-600 hover:bg-red-50 h-7 px-2"
             onClick={() => removeItem(item.id)}
           >
             <span className="sr-only">Remove</span>
