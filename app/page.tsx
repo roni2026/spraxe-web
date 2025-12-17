@@ -23,9 +23,8 @@ import {
   CarouselNext,
   CarouselPrevious,
 } from '@/components/ui/carousel';
-import { AnimatePresence, motion } from 'framer-motion';
 
-// 1. DEFINE THE EXACT MAIN CATEGORIES YOU WANT TO SHOW
+// --- MAIN CATEGORIES TO DISPLAY ---
 const TARGET_CATEGORIES = [
   "Women’s Fashion",
   "Man’s Fashion",
@@ -44,32 +43,28 @@ export default function HomePage() {
   const { addToCart } = useCart();
   const router = useRouter();
   const { toast } = useToast();
-
+  
   const [products, setProducts] = useState<Product[]>([]);
   const [bestSellers, setBestSellers] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
-
-  // Carousel states
+  const [featuredImages, setFeaturedImages] = useState<any[]>([]);
   const [carouselApi, setCarouselApi] = useState<CarouselApi>();
   const [currentSlide, setCurrentSlide] = useState(0);
-  const [featuredImages, setFeaturedImages] = useState<any[]>([]);
-  const carouselInterval = useRef<NodeJS.Timer>();
+  const carouselInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // State for product lightbox
   const [viewingProduct, setViewingProduct] = useState<Product | null>(null);
 
-  // Floating help button states
+  // Messenger + WhatsApp popup
   const [showHelpText, setShowHelpText] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
-  // Fetch products, categories, featured images
   useEffect(() => {
     const fetchData = async () => {
       const [productsRes, bestSellersRes, categoriesRes, featuredRes] = await Promise.all([
         supabase.from('products').select('*').eq('is_active', true).eq('is_featured', true).limit(12),
         supabase.from('products').select('*').eq('is_active', true).order('total_sales', { ascending: false }).limit(12),
-        supabase.from('categories').select('*').eq('is_active', true).limit(50),
+        supabase.from('categories').select('*').eq('is_active', true).limit(50), 
         supabase.from('featured_images').select('*').eq('is_active', true).order('sort_order')
       ]);
 
@@ -80,7 +75,11 @@ export default function HomePage() {
         const sortMap = new Map(TARGET_CATEGORIES.map((name, i) => [name.toLowerCase(), i]));
         const filteredCategories = categoriesRes.data
           .filter(cat => TARGET_CATEGORIES.some(target => target.toLowerCase() === cat.name.toLowerCase()))
-          .sort((a, b) => (sortMap.get(a.name.toLowerCase()) ?? 999) - (sortMap.get(b.name.toLowerCase()) ?? 999));
+          .sort((a, b) => {
+            const indexA = sortMap.get(a.name.toLowerCase()) ?? 999;
+            const indexB = sortMap.get(b.name.toLowerCase()) ?? 999;
+            return indexA - indexB;
+          });
         setCategories(filteredCategories);
       }
 
@@ -91,10 +90,15 @@ export default function HomePage() {
     fetchData();
   }, []);
 
-  // Carousel auto-slide every 5 seconds
+  useEffect(() => {
+    if (!carouselApi) return;
+    setCurrentSlide(carouselApi.selectedScrollSnap());
+    carouselApi.on('select', () => setCurrentSlide(carouselApi.selectedScrollSnap()));
+  }, [carouselApi]);
+
+  // --- Auto-slide carousel every 5s ---
   useEffect(() => {
     if (!carouselApi || featuredImages.length === 0) return;
-
     carouselInterval.current = setInterval(() => {
       const nextIndex = (carouselApi.selectedScrollSnap() + 1) % featuredImages.length;
       carouselApi.scrollTo(nextIndex);
@@ -105,13 +109,7 @@ export default function HomePage() {
     };
   }, [carouselApi, featuredImages]);
 
-  useEffect(() => {
-    if (!carouselApi) return;
-    setCurrentSlide(carouselApi.selectedScrollSnap());
-    carouselApi.on('select', () => setCurrentSlide(carouselApi.selectedScrollSnap()));
-  }, [carouselApi]);
-
-  // Show help text after 5 seconds
+  // --- Show "Need Help?" text after 5s ---
   useEffect(() => {
     const timer = setTimeout(() => setShowHelpText(true), 5000);
     return () => clearTimeout(timer);
@@ -129,23 +127,39 @@ export default function HomePage() {
   const ProductCard = ({ product }: { product: Product }) => (
     <Card className="hover:shadow-lg transition group overflow-hidden h-full flex flex-col border-gray-200">
       <CardContent className="p-0 flex flex-col h-full">
-        <div className="aspect-square bg-gray-50 overflow-hidden relative cursor-zoom-in" onClick={() => setViewingProduct(product)}>
-          {product.images && product.images.length > 0 ? (
-            <img src={product.images[0]} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
+        <div 
+          className="aspect-square bg-gray-50 overflow-hidden relative cursor-zoom-in"
+          onClick={() => setViewingProduct(product)}
+        >
+          {product.images?.length ? (
+            <img
+              src={product.images[0]}
+              alt={product.name}
+              className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+            />
           ) : (
             <div className="w-full h-full flex items-center justify-center">
               <Package className="w-10 h-10 text-gray-300" />
             </div>
           )}
         </div>
+
         <div className="p-2 space-y-2 flex flex-col flex-1">
           <Link href={`/products/${product.slug}`} className="block">
-            <h3 className="text-sm font-medium text-gray-900 line-clamp-2 min-h-[2.5rem] hover:text-blue-900 hover:underline transition leading-tight">{product.name}</h3>
+            <h3 className="text-sm font-medium text-gray-900 line-clamp-2 min-h-[2.5rem] hover:text-blue-900 hover:underline transition leading-tight">
+              {product.name}
+            </h3>
           </Link>
+
           <div className="mt-auto space-y-2">
             <p className="text-base md:text-lg font-bold text-blue-900">৳{product.price || product.base_price}</p>
-            <Button onClick={(e) => { e.stopPropagation(); handleAddToCart(product.id, product.name); }} className="w-full bg-blue-900 hover:bg-blue-800 h-9 text-xs md:text-sm font-medium" size="sm">
-              <ShoppingCart className="mr-2 h-4 w-4" /> Add to Cart
+            <Button
+              onClick={(e) => { e.stopPropagation(); handleAddToCart(product.id, product.name); }}
+              className="w-full bg-blue-900 hover:bg-blue-800 h-9 text-xs md:text-sm font-medium"
+              size="sm"
+            >
+              <ShoppingCart className="mr-2 h-4 w-4" />
+              Add to Cart
             </Button>
           </div>
         </div>
@@ -157,12 +171,12 @@ export default function HomePage() {
     <div className="min-h-screen flex flex-col bg-gray-50">
       <Header />
 
-      {/* Hero Carousel Section */}
+      {/* Hero Carousel */}
       <section className="bg-white pt-4 pb-2">
         <div className="w-full max-w-[1800px] mx-auto px-4">
-          {/* Desktop */}
+          {/* Desktop Banner */}
           <div className="hidden md:block">
-            <Carousel className="w-full" opts={{ loop: true }} setApi={setCarouselApi}>
+            <Carousel className="w-full" opts={{ loop: true }}>
               <CarouselContent>
                 {featuredImages.map((item) => (
                   <CarouselItem key={item.id}>
@@ -183,7 +197,7 @@ export default function HomePage() {
             </Carousel>
           </div>
 
-          {/* Mobile */}
+          {/* Mobile Banner */}
           <div className="md:hidden">
             <Carousel opts={{ align: "start", loop: true }} className="w-full" setApi={setCarouselApi}>
               <CarouselContent>
@@ -199,17 +213,12 @@ export default function HomePage() {
                   </CarouselItem>
                 ))}
               </CarouselContent>
-              <div className="flex justify-center gap-1.5 mt-2">
-                {featuredImages.map((_, index) => (
-                  <button key={index} onClick={() => carouselApi?.scrollTo(index)} className={`h-1.5 rounded-full transition-all ${currentSlide === index ? 'w-6 bg-blue-900' : 'w-1.5 bg-gray-300'}`} />
-                ))}
-              </div>
             </Carousel>
           </div>
         </div>
       </section>
 
-      {/* Category Section */}
+      {/* --- CATEGORY SECTION --- */}
       <section className="bg-white py-4 border-b border-gray-100">
         <div className="w-full max-w-[1800px] mx-auto px-4">
           <div className="flex items-center justify-between mb-3">
@@ -252,7 +261,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Best Sellers Section */}
+      {/* --- BEST SELLERS --- */}
       <section className="py-8 bg-gray-50">
         <div className="w-full max-w-[1800px] mx-auto px-4">
           <div className="flex items-center justify-between mb-4">
@@ -268,31 +277,20 @@ export default function HomePage() {
           {loading ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-2 md:gap-3">
               {[...Array(6)].map((_, i) => (
-                <Card key={i}>
-                  <CardContent className="p-2">
-                    <Skeleton className="w-full aspect-square mb-2" />
-                    <Skeleton className="w-full h-3 mb-2" />
-                    <Skeleton className="w-3/4 h-3" />
-                  </CardContent>
-                </Card>
+                <Card key={i}><CardContent className="p-2"><Skeleton className="w-full aspect-square mb-2" /><Skeleton className="w-full h-3 mb-2" /><Skeleton className="w-3/4 h-3" /></CardContent></Card>
               ))}
             </div>
           ) : bestSellers.length === 0 ? (
-            <div className="text-center py-8">
-              <Package className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-              <p className="text-gray-600 text-sm">No best sellers yet</p>
-            </div>
+            <div className="text-center py-8"><Package className="w-12 h-12 text-gray-300 mx-auto mb-3" /><p className="text-gray-600 text-sm">No best sellers yet</p></div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-2 md:gap-3">
-              {bestSellers.map((product) => (
-                <ProductCard key={product.id} product={product} />
-              ))}
+              {bestSellers.map((product) => <ProductCard key={product.id} product={product} />)}
             </div>
           )}
         </div>
       </section>
 
-      {/* Featured Products Section */}
+      {/* --- FEATURED PRODUCTS --- */}
       <section className="py-8 bg-white">
         <div className="w-full max-w-[1800px] mx-auto px-4">
           <div className="flex items-center justify-between mb-4">
@@ -308,36 +306,24 @@ export default function HomePage() {
           {loading ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-2 md:gap-3">
               {[...Array(12)].map((_, i) => (
-                <Card key={i}>
-                  <CardContent className="p-2">
-                    <Skeleton className="w-full aspect-square mb-2" />
-                    <Skeleton className="w-full h-3 mb-2" />
-                    <Skeleton className="w-3/4 h-3" />
-                  </CardContent>
-                </Card>
+                <Card key={i}><CardContent className="p-2"><Skeleton className="w-full aspect-square mb-2" /><Skeleton className="w-full h-3 mb-2" /><Skeleton className="w-3/4 h-3" /></CardContent></Card>
               ))}
             </div>
           ) : products.length === 0 ? (
-            <div className="text-center py-12">
-              <Package className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">No Products Yet</h3>
-              <p className="text-gray-600 mb-4">Products will appear here once they are added.</p>
-            </div>
+            <div className="text-center py-12"><Package className="w-16 h-16 text-gray-300 mx-auto mb-4" /><h3 className="text-xl font-semibold text-gray-900 mb-2">No Products Yet</h3><p className="text-gray-600 mb-4">Products will appear here once they are added.</p></div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-2 md:gap-3">
-              {products.map((product) => (
-                <ProductCard key={product.id} product={product} />
-              ))}
+              {products.map((product) => <ProductCard key={product.id} product={product} />)}
             </div>
           )}
         </div>
       </section>
 
-      {/* Product Lightbox Modal */}
+      {/* --- IMAGE LIGHTBOX MODAL --- */}
       <Dialog open={!!viewingProduct} onOpenChange={(open) => !open && setViewingProduct(null)}>
         <DialogContent className="max-w-4xl bg-black/90 border-none text-white p-0 overflow-hidden">
           <div className="relative w-full h-[80vh] flex flex-col items-center justify-center p-4">
-            {viewingProduct && viewingProduct.images && viewingProduct.images.length > 0 ? (
+            {viewingProduct?.images?.length ? (
               <Carousel className="w-full max-w-2xl">
                 <CarouselContent>
                   {viewingProduct.images.map((img, index) => (
@@ -346,44 +332,47 @@ export default function HomePage() {
                     </CarouselItem>
                   ))}
                 </CarouselContent>
-                <CarouselPrevious className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/20 hover:bg-white/40 text-white h-10 w-10 rounded-full" />
-                <CarouselNext className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/20 hover:bg-white/40 text-white h-10 w-10 rounded-full" />
+                <CarouselPrevious className="left-2 bg-white/20 hover:bg-white/40 border-none text-white" />
+                <CarouselNext className="right-2 bg-white/20 hover:bg-white/40 border-none text-white" />
               </Carousel>
             ) : (
-              <Package className="w-16 h-16 text-gray-300" />
+              <div className="flex flex-col items-center text-gray-400">
+                <Package className="w-24 h-24 mb-4" />
+                <p>No images available</p>
+              </div>
             )}
-            <Button onClick={() => setViewingProduct(null)} className="absolute top-2 right-2 bg-white/20 hover:bg-white/40 text-white">Close</Button>
+            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-6 text-center">
+              <h2 className="text-xl font-bold">{viewingProduct?.name}</h2>
+              <p className="text-lg font-semibold text-blue-300">৳{viewingProduct?.price || viewingProduct?.base_price}</p>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Floating Help Button */}
-      <div className="fixed bottom-6 right-6 flex flex-col items-end gap-2 z-50">
-        <AnimatePresence>
-          {showHelpText && !expanded && (
-            <motion.div initial={{ opacity: 0, x: 50 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 50 }}
-              className="relative bg-white text-gray-900 px-4 py-2 rounded shadow-md text-sm select-none max-w-xs md:max-w-sm">
-              Need help?
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        <Button onClick={() => setExpanded(prev => !prev)} className="bg-blue-900 hover:bg-blue-800 text-white rounded-full p-4 shadow-lg flex items-center justify-center">
-          💬
-        </Button>
-
-        <AnimatePresence>
-          {expanded && (
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }} className="flex flex-col gap-2 mt-2">
-              <a href="https://m.me/spraxe" target="_blank" className="bg-blue-600 text-white px-4 py-2 rounded shadow hover:bg-blue-700 flex items-center gap-2">
+      {/* --- MESSENGER + WHATSAPP FLOATING BUTTON --- */}
+      <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-2">
+        {showHelpText && !expanded && (
+          <div className="mb-2 px-3 py-2 bg-blue-900 text-white rounded shadow-lg animate-fade-in cursor-pointer" onClick={() => setExpanded(true)}>
+            Need help?
+          </div>
+        )}
+        {expanded && (
+          <>
+            <a href="https://m.me/yourpage" target="_blank" rel="noopener noreferrer">
+              <Button className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 h-10 w-44 text-xs">
                 <MessageSquare className="w-4 h-4" /> Messenger
-              </a>
-              <a href="https://wa.me/01606087761" target="_blank" className="bg-green-600 text-white px-4 py-2 rounded shadow hover:bg-green-700 flex items-center gap-2">
+              </Button>
+            </a>
+            <a href="https://wa.me/1234567890" target="_blank" rel="noopener noreferrer">
+              <Button className="flex items-center gap-2 bg-green-500 hover:bg-green-400 h-10 w-44 text-xs">
                 <Phone className="w-4 h-4" /> WhatsApp
-              </a>
-            </motion.div>
-          )}
-        </AnimatePresence>
+              </Button>
+            </a>
+          </>
+        )}
+        <Button className="flex items-center justify-center bg-blue-900 hover:bg-blue-800 w-12 h-12 rounded-full shadow-lg" onClick={() => setExpanded(!expanded)}>
+          <MessageSquare className="w-5 h-5 text-white" />
+        </Button>
       </div>
 
       <Footer />
