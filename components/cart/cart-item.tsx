@@ -11,11 +11,14 @@ interface CartItemProps {
     price: number;
     images?: string[];
     quantity: number;
+    // Add product_id if needed for links, otherwise id is usually fine
+    product_id?: string; 
   };
 }
 
 export function CartItem({ item }: CartItemProps) {
-  const { updateQuantity, removeFromCart } = useCart();
+  // FIXED: Changed 'removeFromCart' to 'removeItem' to match your Context
+  const { updateQuantity, removeItem } = useCart();
 
   // Handle image URL safely
   const imageUrl = item.images?.[0] || null;
@@ -42,7 +45,8 @@ export function CartItem({ item }: CartItemProps) {
         <div>
           <div className="flex justify-between text-base font-medium text-gray-900">
             <h3 className="line-clamp-2 text-sm leading-tight pr-4">
-              <a href={`/products/${item.id}`}>{item.name}</a>
+              {/* Ensure we link to the product page */}
+              <a href={`/products/${item.product_id || item.id}`}>{item.name}</a>
             </h3>
             <p className="ml-4 flex-shrink-0">৳{item.price * item.quantity}</p>
           </div>
@@ -81,7 +85,8 @@ export function CartItem({ item }: CartItemProps) {
             variant="ghost"
             size="sm"
             className="text-red-500 hover:text-red-600 hover:bg-red-50 h-8 px-2"
-            onClick={() => removeFromCart(item.id)}
+            // FIXED: Using removeItem here
+            onClick={() => removeItem(item.id)}
           >
             <span className="sr-only">Remove</span>
             <X className="h-4 w-4" />
