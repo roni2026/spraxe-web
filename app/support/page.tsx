@@ -60,6 +60,7 @@ export default function SupportPage() {
     setLoading(true);
     const generatedTicket = `TICKET-${Date.now()}`;
 
+    // 1️⃣ Insert ticket into Supabase
     const { error } = await supabase.from('support_tickets').insert({
       user_id: user.id,
       ticket_number: generatedTicket,
@@ -82,7 +83,21 @@ export default function SupportPage() {
       return;
     }
 
+    // 2️⃣ Call auto-confirmation API (fire-and-forget)
+    fetch('/api/support/confirm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ticketNumber: generatedTicket,
+        customerEmail: formData.email,
+        subject: formData.subject,
+      }),
+    }).catch(console.error);
+
+    // 3️⃣ Show floating success modal
     setTicketNumber(generatedTicket);
+
+    // 4️⃣ Reset form
     setFormData({
       type: 'inquiry',
       email: '',
