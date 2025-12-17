@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import { ShoppingCart, Package, ChevronRight, MessageSquare, Phone } from 'lucide-react';
+import { ShoppingCart, Package, ChevronRight } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import {
   Carousel,
@@ -54,16 +54,6 @@ export default function HomePage() {
   const [featuredImages, setFeaturedImages] = useState<any[]>([]);
   
   const [viewingProduct, setViewingProduct] = useState<Product | null>(null);
-
-  // --- Floating Help Button States ---
-  const [expanded, setExpanded] = useState(false);
-  const [showHelpText, setShowHelpText] = useState(false);
-
-  // Show "Need help?" text after 5 seconds
-  useEffect(() => {
-    const timeout = setTimeout(() => setShowHelpText(true), 5000);
-    return () => clearTimeout(timeout);
-  }, []);
 
   // Fetch products, categories, featured images
   useEffect(() => {
@@ -122,17 +112,17 @@ export default function HomePage() {
     carouselApi.on('select', () => setCurrentSlide(carouselApi.selectedScrollSnap()));
   }, [carouselApi]);
 
-  // --- Auto-slide carousel every 5 seconds ---
+  // --- Auto-slide carousel every 5 seconds (FIXED) ---
   useEffect(() => {
-    if (!carouselApi || featuredImages.length === 0) return;
+    if (!carouselApi) return;
 
     const interval = setInterval(() => {
-      const nextIndex = (carouselApi.selectedScrollSnap() + 1) % featuredImages.length;
-      carouselApi.scrollTo(nextIndex);
+      // scrollNext() works reliably with opts={{ loop: true }}
+      carouselApi.scrollNext();
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [carouselApi, featuredImages]);
+  }, [carouselApi]);
 
   const handleAddToCart = async (productId: string, productName: string) => {
     try {
@@ -422,53 +412,6 @@ export default function HomePage() {
           </div>
         </DialogContent>
       </Dialog>
-
-      {/* FLOATING HELP BUTTON */}
-      {showHelpText && (
-        <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
-          
-          {/* Expanded buttons */}
-          {expanded && (
-            <div className="flex flex-col gap-3 mb-3 items-end">
-              <a
-                href="https://m.me/yourpage"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-white shadow-lg hover:bg-blue-700 transition"
-              >
-                <MessageSquare size={22} />
-              </a>
-
-              <a
-                href="https://wa.me/1234567890"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-12 h-12 rounded-full bg-green-500 flex items-center justify-center text-white shadow-lg hover:bg-green-600 transition"
-              >
-                <Phone size={22} />
-              </a>
-            </div>
-          )}
-
-          {/* Need Help text (LEFT of button) */}
-          {!expanded && (
-            <div className="flex items-center gap-2 mb-2">
-              <span className="bg-white px-3 py-1 rounded-full shadow text-sm font-medium text-gray-900">
-                Need help?
-              </span>
-              <span className="text-gray-700 text-lg animate-pulse">→</span>
-            </div>
-          )}
-
-          {/* Main round toggle button */}
-          <button
-            onClick={() => setExpanded(!expanded)}
-            className="w-14 h-14 rounded-full bg-blue-600 flex items-center justify-center text-white shadow-xl hover:bg-blue-700 transition"
-          >
-            <MessageSquare size={26} />
-          </button>
-        </div>
-      )}
 
       <Footer />
     </div>
