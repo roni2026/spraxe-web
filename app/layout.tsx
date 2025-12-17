@@ -1,9 +1,12 @@
+// app/layout.tsx
+
 import './globals.css';
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import { AuthProvider } from '@/lib/auth/auth-context';
 import { CartProvider } from '@/lib/cart/cart-context';
 import { Toaster } from '@/components/ui/toaster';
+import { FloatingCartButton } from '@/components/cart/floating-cart-button'; // <--- 1. Import Component
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -23,6 +26,8 @@ export default function RootLayout({
         <AuthProvider>
           <CartProvider>
             {children}
+            {/* 2. Add Button Here (Inside CartProvider) */}
+            <FloatingCartButton />
             <Toaster />
           </CartProvider>
         </AuthProvider>
