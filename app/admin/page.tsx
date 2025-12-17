@@ -17,8 +17,9 @@ import {
   FileText,
   Settings,
   ChevronRight,
-  MessageSquare, // Icon for Support Tickets
-  LifeBuoy       // Icon for Unresolved Tickets
+  MessageSquare, 
+  LifeBuoy,
+  Clock // Icon for Pending Tickets
 } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -32,7 +33,8 @@ export default function AdminDashboard() {
     orders: 0,
     customers: 0,
     pendingOrders: 0,
-    unresolvedTickets: 0, // New Stat
+    unresolvedTickets: 0, // Status: 'open'
+    pendingTickets: 0,    // Status: 'in_progress'
   });
   
   const [recentOrders, setRecentOrders] = useState<any[]>([]);
@@ -49,21 +51,24 @@ export default function AdminDashboard() {
   const fetchDashboardData = async () => {
     setLoading(true);
     // 1. Fetch Stats
-    const [products, orders, customers, pending, tickets] = await Promise.all([
+    const [products, orders, customers, pendingOrders, openTickets, inProgressTickets] = await Promise.all([
       supabase.from('products').select('id', { count: 'exact', head: true }),
       supabase.from('orders').select('id', { count: 'exact', head: true }),
       supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'customer'),
       supabase.from('orders').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
-      // Fetch Unresolved Tickets (status = 'open')
+      
+      // Support Stats
       supabase.from('support_tickets').select('id', { count: 'exact', head: true }).eq('status', 'open'),
+      supabase.from('support_tickets').select('id', { count: 'exact', head: true }).eq('status', 'in_progress'),
     ]);
 
     setStats({
       products: products.count || 0,
       orders: orders.count || 0,
       customers: customers.count || 0,
-      pendingOrders: pending.count || 0,
-      unresolvedTickets: tickets.count || 0,
+      pendingOrders: pendingOrders.count || 0,
+      unresolvedTickets: openTickets.count || 0,
+      pendingTickets: inProgressTickets.count || 0,
     });
 
     // 2. Fetch Recent Orders (Last 10)
@@ -124,7 +129,6 @@ export default function AdminDashboard() {
 
               <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 mt-4">Support</div>
               
-              {/* NEW: Support Ticket Option */}
               <Link href="/admin/support" className="block">
                 <Button variant="outline" className="w-full justify-start hover:bg-blue-50 hover:text-blue-700" size="sm">
                   <MessageSquare className="mr-2 h-4 w-4" />
@@ -169,8 +173,9 @@ export default function AdminDashboard() {
             </span>
           </div>
 
-          {/* Stats Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6"> {/* Changed grid-cols-4 to grid-cols-5 for new card */}
+          {/* Stats Grid (Updated to 3 columns to fit 6 items nicely) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            
             <Card className="border-l-4 border-l-blue-600 shadow-sm hover:shadow-md transition-shadow">
               <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle className="text-sm font-medium text-gray-600">Total Products</CardTitle>
@@ -211,7 +216,7 @@ export default function AdminDashboard() {
               </CardContent>
             </Card>
 
-            {/* NEW: Unresolved Tickets Card */}
+            {/* Unresolved Tickets (Status: Open) */}
             <Card className="border-l-4 border-l-red-500 shadow-sm hover:shadow-md transition-shadow">
               <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle className="text-sm font-medium text-gray-600">Unresolved Tickets</CardTitle>
@@ -219,6 +224,17 @@ export default function AdminDashboard() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-red-600">{stats.unresolvedTickets}</div>
+              </CardContent>
+            </Card>
+
+            {/* NEW: Pending Tickets (Status: In Progress) */}
+            <Card className="border-l-4 border-l-blue-400 shadow-sm hover:shadow-md transition-shadow">
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium text-gray-600">Pending Tickets</CardTitle>
+                <Clock className="w-4 h-4 text-blue-400" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-blue-600">{stats.pendingTickets}</div>
               </CardContent>
             </Card>
 
