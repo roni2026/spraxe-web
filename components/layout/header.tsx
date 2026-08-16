@@ -41,6 +41,7 @@ import {
   PlusCircle,
   X,
   Home,
+  LayoutGrid,
 } from 'lucide-react';
 
 export function Header() {
@@ -328,6 +329,12 @@ export function Header() {
     }
   };
 
+  // Shared style for the mobile bottom bar items (white bar, blue when active).
+  const bottomNavLinkClass = (active: boolean) =>
+    `flex flex-col items-center justify-center gap-0.5 flex-1 h-full rounded-lg transition-colors touch-manipulation focus:outline-none focus-visible:outline-none [-webkit-tap-highlight-color:transparent] ${
+      active ? 'text-[#0F48A2] font-semibold' : 'text-gray-600 active:bg-gray-100'
+    }`;
+
   return (
     <>
       {/* Mobile-only micro bar */}
@@ -375,7 +382,7 @@ export function Header() {
 
       {/* Main header */}
       <header
-        className={`fixed top-0 left-0 right-0 z-40 border-b border-white/10 bg-[#0F48A2] md:bg-[#0F48A2]/95 md:backdrop-blur md:supports-[backdrop-filter]:bg-[#0F48A2]/80 transform-gpu [backface-visibility:hidden] will-change-transform transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${
+        className={`fixed top-0 left-0 right-0 z-40 border-b border-white/10 bg-[#0F48A2] md:bg-[#0F48A2]/95 md:backdrop-blur md:supports-[backdrop-filter]:bg-[#0F48A2]/80 transform-gpu [backface-visibility:hidden] will-change-transform transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${
           hideHeader && !mobileSearchOpen && !suggestOpen && !categorySidebarOpen ? '-translate-y-full' : 'translate-y-0'
         } ${isScrolled ? 'shadow-sm' : ''}`}
       >
@@ -456,10 +463,28 @@ export function Header() {
                 </Button>
               </Link>
 
-              {/* Track order icon (mobile only - search is in bottom nav) */}
-              <Link href="/track-order" className="md:hidden">
-                <Button variant="ghost" size="icon" className="rounded-xl text-white hover:bg-white/10" aria-label="Track order">
-                  <PackageSearch className="h-5 w-5 text-white" />
+              {/* Search toggle (mobile only — opens the search bar under the header) */}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setMobileSearchOpen((v) => !v)}
+                className="md:hidden rounded-xl text-white hover:bg-white/10"
+                aria-label="Search products"
+              >
+                <Search className="h-5 w-5 text-white" />
+              </Button>
+
+              {/* Wishlist icon (mobile only — desktop has the labeled button above) */}
+              <Link href="/wishlist" className="md:hidden">
+                <Button variant="ghost" size="icon" className="relative rounded-xl text-white hover:bg-white/10" aria-label="Wishlist">
+                  <Heart className="h-5 w-5 text-white" />
+                  {wishlistCount > 0 && (
+                    <span className="absolute -top-1 -right-1">
+                      <Badge className="bg-orange-500 hover:bg-orange-500 text-white px-1.5 py-0 text-[9px] rounded-full shadow">
+                        {wishlistCount}
+                      </Badge>
+                    </span>
+                  )}
                 </Button>
               </Link>
 
@@ -645,60 +670,52 @@ export function Header() {
       </header>
 
       {/* Spacer to offset content below the fixed header.
-          Collapses (height 0) when the header is hidden so there's no gap. */}
-      <div
-        className={`w-full transition-all duration-300 ${
-          hideHeader && !mobileSearchOpen && !suggestOpen && !categorySidebarOpen
-            ? 'h-0'
-            : 'h-16 md:h-20'
-        }`}
-        aria-hidden="true"
-      />
+          IMPORTANT: this height must stay constant. Collapsing it when the
+          header hides shrinks the document mid-scroll, which shifts the scroll
+          position and makes the header expand/collapse repeatedly (flicker).
+          The header only hides after scrolling well past this spacer, so a
+          constant height never leaves a visible gap. */}
+      <div className="w-full h-16 md:h-20" aria-hidden="true" />
 
       <CategorySidebar isOpen={categorySidebarOpen} onClose={() => setCategorySidebarOpen(false)} />
       <PhoneAuthDialog open={phoneAuthOpen} onOpenChange={setPhoneAuthOpen} />
       <EmailAuthDialog open={emailAuthOpen} onOpenChange={setEmailAuthOpen} />
 
-      {/* Mobile bottom navigation bar — mobile only (hidden on desktop/tablet ≥ md) */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#0F48A2] border-t border-white/10 shadow-[0_-2px_10px_rgba(0,0,0,0.08)]" style={{ touchAction: 'manipulation' }}>
-        <div className="flex items-center justify-around h-16 px-1 pb-1">
-          <Link href="/" prefetch className="flex flex-col items-center justify-center gap-0.5 flex-1 h-full rounded-lg active:bg-white/10 transition-colors touch-manipulation focus:outline-none focus-visible:outline-none [-webkit-tap-highlight-color:transparent]">
-            <Home className="h-5 w-5 text-white" />
-            <span className="text-[11px] font-medium text-white/90">Home</span>
+      {/* Mobile bottom navigation bar — mobile only (hidden on desktop/tablet ≥ md).
+          White app-style bar: Home, Categories, Cart, Track, Account. */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 shadow-[0_-2px_12px_rgba(0,0,0,0.08)]" style={{ touchAction: 'manipulation' }}>
+        <div className="flex items-stretch justify-around h-16 px-1">
+          <Link href="/" prefetch className={bottomNavLinkClass(pathname === '/')}>
+            <Home className="h-5 w-5" />
+            <span className="text-[11px] font-medium">Home</span>
           </Link>
           <button
-            onClick={() => setMobileSearchOpen((v) => !v)}
-            className="flex flex-col items-center justify-center gap-0.5 flex-1 h-full rounded-lg active:bg-white/10 transition-colors touch-manipulation focus:outline-none focus-visible:outline-none [-webkit-tap-highlight-color:transparent]"
-            aria-label="Search products"
+            type="button"
+            onClick={() => setCategorySidebarOpen(true)}
+            className={bottomNavLinkClass(false)}
+            aria-label="Open categories"
           >
-            <Search className="h-5 w-5 text-white" />
-            <span className="text-[11px] font-medium text-white/90">Search</span>
+            <LayoutGrid className="h-5 w-5" />
+            <span className="text-[11px] font-medium">Categories</span>
           </button>
-          <Link href="/cart" prefetch className="flex flex-col items-center justify-center gap-0.5 flex-1 h-full relative rounded-lg active:bg-white/10 transition-colors touch-manipulation focus:outline-none focus-visible:outline-none [-webkit-tap-highlight-color:transparent]">
-            <ShoppingCart className="h-5 w-5 text-white" />
-            <span className="text-[11px] font-medium text-white/90">Cart</span>
-            {itemCount > 0 && (
-              <span className="absolute top-0.5 right-1/4">
-                <Badge className="bg-red-600 hover:bg-red-600 text-white px-1.5 py-0 text-[9px] rounded-full shadow">
+          <Link href="/cart" prefetch className={bottomNavLinkClass(pathname === '/cart')}>
+            <span className="relative">
+              <ShoppingCart className="h-5 w-5" />
+              {itemCount > 0 && (
+                <span className="absolute -top-1.5 -right-2.5 bg-orange-500 text-white text-[9px] font-bold leading-none rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center shadow">
                   {itemCount}
-                </Badge>
-              </span>
-            )}
+                </span>
+              )}
+            </span>
+            <span className="text-[11px] font-medium">Cart</span>
           </Link>
-          <Link href="/wishlist" prefetch className="flex flex-col items-center justify-center gap-0.5 flex-1 h-full relative rounded-lg active:bg-white/10 transition-colors touch-manipulation focus:outline-none focus-visible:outline-none [-webkit-tap-highlight-color:transparent]">
-            <Heart className="h-5 w-5 text-white" />
-            <span className="text-[11px] font-medium text-white/90">Wishlist</span>
-            {wishlistCount > 0 && (
-              <span className="absolute top-0.5 right-1/4">
-                <Badge className="bg-orange-500 hover:bg-orange-500 text-white px-1.5 py-0 text-[9px] rounded-full shadow">
-                  {wishlistCount}
-                </Badge>
-              </span>
-            )}
+          <Link href="/track-order" prefetch className={bottomNavLinkClass(pathname === '/track-order')}>
+            <PackageSearch className="h-5 w-5" />
+            <span className="text-[11px] font-medium">Track</span>
           </Link>
-          <Link href={user ? '/dashboard' : '/login'} prefetch className="flex flex-col items-center justify-center gap-0.5 flex-1 h-full rounded-lg active:bg-white/10 transition-colors touch-manipulation focus:outline-none focus-visible:outline-none [-webkit-tap-highlight-color:transparent]">
-            <User className="h-5 w-5 text-white" />
-            <span className="text-[11px] font-medium text-white/90">Account</span>
+          <Link href={user ? '/dashboard' : '/login'} prefetch className={bottomNavLinkClass(pathname === '/dashboard' || pathname === '/login')}>
+            <User className="h-5 w-5" />
+            <span className="text-[11px] font-medium">Account</span>
           </Link>
         </div>
         {/* Safe area padding for iOS notch devices */}

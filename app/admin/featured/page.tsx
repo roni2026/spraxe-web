@@ -170,6 +170,58 @@ export default function FeaturedImagesManagement() {
     return { publicUrl: url, path: publicId };
   };
 
+  // --- Persistence helpers ---------------------------------------------------
+  // Uploads must reach the database immediately, otherwise a refresh loses
+  // them. If the live database is missing one of the newer optional columns
+  // (storage_path, widths, etc.), we strip just that column and retry so the
+  // image URL itself always gets saved.
+
+  const OPTIONAL_FEATURED_COLUMNS = [
+    'mobile_image_url',
+    'link_url',
+    'storage_path',
+    'image_width',
+    'image_height',
+    'mobile_storage_path',
+    'mobile_image_width',
+    'mobile_image_height',
+    'placement',
+    'updated_at',
+  ];
+
+  const missingColumnName = (error: any): string | null => {
+    const msg = String(error?.message || error?.details || '');
+    let m = msg.match(/Could not find the '([a-zA-Z0-9_]+)' column/i); // PostgREST (PGRST204)
+    if (m) return m[1];
+    m = msg.match(/column\s+(?:[a-zA-Z0-9_]+\.)?([a-zA-Z0-9_]+)\s+does not exist/i); // Postgres (42703)
+    return m ? m[1] : null;
+  };
+
+  /** Update one featured_images row; returns null on success or the last error. */
+  const persistFeaturedFields = async (id: number, fields: Record<string, any>): Promise<any | null> => {
+    const payload: Record<string, any> = { ...fields };
+    let lastError: any = null;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const { error } = await supabase.from('featured_images').update(payload).eq('id', id);
+      if (!error) return null;
+      lastError = error;
+      const col = missingColumnName(error);
+      if (col && col in payload && OPTIONAL_FEATURED_COLUMNS.includes(col)) {
+        delete payload[col];
+        continue;
+      }
+      break;
+    }
+    return lastError;
+  };
+
+  const persistBanner = async (value: SiteBanner): Promise<any | null> => {
+    const { error } = await supabase
+      .from('site_settings')
+      .upsert({ key: 'home_mid_banner', value: value as any }, { onConflict: 'key' });
+    return error || null;
+  };
+
   const handlePickFile = (id: number, variant: 'desktop' | 'mobile') => {
     if (variant === 'desktop') desktopFileInputRef.current[id]?.click();
     else mobileFileInputRef.current[id]?.click();
@@ -195,10 +247,40 @@ export default function FeaturedImagesManagement() {
         handleImageChange(id, 'mobile_image_height', dims.height);
       }
 
-      toast({
-        title: 'Uploaded',
-        description: `Uploaded ${dims.width}×${dims.height}px to bucket “${FEATURE_BUCKET}”.`,
-      });
+      // Save to the database right away so a refresh never loses the image.
+      const persistError = await persistFeaturedFields(
+        id,
+        variant === 'desktop'
+          ? {
+              image_url: uploaded.publicUrl,
+              storage_path: uploaded.path,
+              image_width: dims.width,
+              image_height: dims.height,
+              updated_at: new Date().toISOString(),
+            }
+          : {
+              mobile_image_url: uploaded.publicUrl,
+              mobile_storage_path: uploaded.path,
+              mobile_image_width: dims.width,
+              mobile_image_height: dims.height,
+              updated_at: new Date().toISOString(),
+            }
+      );
+
+      if (persistError) {
+        toast({
+          title: 'Uploaded, but could not save',
+          description: `The image is on Cloudinary but saving failed (${String(
+            persistError?.message || 'unknown error'
+          )}). Press “Save Changes” to retry.`,
+          variant: 'destructive',
+        });
+      } else {
+        toast({
+          title: 'Uploaded & saved',
+          description: `${variant === 'desktop' ? 'Desktop' : 'Mobile'} image (${dims.width}×${dims.height}px) is saved — it will survive a refresh.`,
+        });
+      }
     } catch (e: any) {
       toast({
         title: 'Upload failed',
@@ -222,27 +304,41 @@ export default function FeaturedImagesManagement() {
       else setBannerUploadingMobile(true);
       const dims = await getImageDimensionsFromFile(file);
       const uploaded = await uploadToStorage(file);
-      setBanner((b) =>
-        variant === 'desktop'
+
+      const next: SiteBanner = {
+        ...banner,
+        ...(variant === 'desktop'
           ? {
-              ...b,
               image_url: uploaded.publicUrl,
               storage_path: uploaded.path,
               image_width: dims.width,
               image_height: dims.height,
             }
           : {
-              ...b,
               mobile_image_url: uploaded.publicUrl,
               mobile_storage_path: uploaded.path,
               mobile_image_width: dims.width,
               mobile_image_height: dims.height,
-            }
-      );
-      toast({
-        title: 'Uploaded',
-        description: `Uploaded ${dims.width}×${dims.height}px to bucket “${FEATURE_BUCKET}”.`,
-      });
+            }),
+      };
+      setBanner(next);
+
+      // Save to the database right away so a refresh never loses the image.
+      const persistError = await persistBanner(next);
+      if (persistError) {
+        toast({
+          title: 'Uploaded, but could not save',
+          description: `The image is on Cloudinary but saving failed (${String(
+            persistError?.message || 'unknown error'
+          )}). Press “Save Changes” to retry.`,
+          variant: 'destructive',
+        });
+      } else {
+        toast({
+          title: 'Uploaded & saved',
+          description: `${variant === 'desktop' ? 'Desktop' : 'Mobile'} banner (${dims.width}×${dims.height}px) is saved — it will survive a refresh.`,
+        });
+      }
     } catch (e: any) {
       toast({
         title: 'Upload failed',
@@ -259,38 +355,33 @@ export default function FeaturedImagesManagement() {
     setSaving(true);
 
     const updates = images.map((img: FeaturedImage) =>
-      supabase
-        .from('featured_images')
-        .update({
-          title: img.title,
-          description: img.description,
-          image_url: img.image_url,
-          mobile_image_url: img.mobile_image_url ?? null,
-          link_url: img.link_url ?? null,
-          storage_path: img.storage_path ?? null,
-          image_width: img.image_width ?? null,
-          image_height: img.image_height ?? null,
-          mobile_storage_path: img.mobile_storage_path ?? null,
-          mobile_image_width: img.mobile_image_width ?? null,
-          mobile_image_height: img.mobile_image_height ?? null,
-          sort_order: img.sort_order,
-          is_active: img.is_active,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', img.id)
+      persistFeaturedFields(img.id, {
+        title: img.title,
+        description: img.description,
+        image_url: img.image_url,
+        mobile_image_url: img.mobile_image_url ?? null,
+        link_url: img.link_url ?? null,
+        storage_path: img.storage_path ?? null,
+        image_width: img.image_width ?? null,
+        image_height: img.image_height ?? null,
+        mobile_storage_path: img.mobile_storage_path ?? null,
+        mobile_image_width: img.mobile_image_width ?? null,
+        mobile_image_height: img.mobile_image_height ?? null,
+        sort_order: img.sort_order,
+        is_active: img.is_active,
+        updated_at: new Date().toISOString(),
+      })
     );
 
-    const [results, bannerRes] = await Promise.all([
-      Promise.all(updates),
-      supabase
-        .from('site_settings')
-        .upsert({ key: 'home_mid_banner', value: banner as any }, { onConflict: 'key' }),
-    ]);
+    const [updateErrors, bannerError] = await Promise.all([Promise.all(updates), persistBanner(banner)]);
+    const firstError = updateErrors.find(Boolean) || bannerError;
 
-    const hasError = results.some((r) => r.error) || !!bannerRes.error;
-
-    if (hasError) {
-      toast({ title: 'Error', description: 'Failed to update some settings', variant: 'destructive' });
+    if (firstError) {
+      toast({
+        title: 'Save failed',
+        description: String(firstError?.message || 'Could not save. Please try again.'),
+        variant: 'destructive',
+      });
     } else {
       toast({ title: 'Success', description: 'Updated successfully' });
       await Promise.all([loadImages(), loadBanner()]);
@@ -327,10 +418,29 @@ export default function FeaturedImagesManagement() {
       placement: activeSection,
     };
 
-    const { error } = await supabase.from('featured_images').insert(payload);
+    // Insert, dropping optional columns the live database doesn't have yet.
+    let insertError: any = null;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const { error } = await supabase.from('featured_images').insert(payload);
+      if (!error) {
+        insertError = null;
+        break;
+      }
+      insertError = error;
+      const col = missingColumnName(error);
+      if (col && col in payload && OPTIONAL_FEATURED_COLUMNS.includes(col)) {
+        delete payload[col];
+        continue;
+      }
+      break;
+    }
 
-    if (error) {
-      toast({ title: 'Error', description: 'Failed to add new image', variant: 'destructive' });
+    if (insertError) {
+      toast({
+        title: 'Error',
+        description: `Failed to add new image (${String(insertError?.message || 'unknown error')})`,
+        variant: 'destructive',
+      });
     } else {
       toast({ title: 'Success', description: 'New featured image added' });
       await loadImages();
@@ -493,7 +603,7 @@ export default function FeaturedImagesManagement() {
                   </div>
 
                   <div className="text-xs text-gray-500">
-                    Bucket: <span className="font-semibold">{FEATURE_BUCKET}</span>
+                    Storage: <span className="font-semibold">Cloudinary (spraxe/{FEATURE_BUCKET})</span> · uploads save automatically
                   </div>
                 </div>
 
@@ -549,7 +659,7 @@ export default function FeaturedImagesManagement() {
                   </div>
 
                   <div className="text-xs text-gray-500">
-                    Bucket: <span className="font-semibold">{FEATURE_BUCKET}</span>
+                    Storage: <span className="font-semibold">Cloudinary (spraxe/{FEATURE_BUCKET})</span> · uploads save automatically
                   </div>
                 </div>
               </div>
